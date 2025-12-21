@@ -5,7 +5,8 @@ from core.models import (
     CapacidadInversion,
     ViabilidadComercial,
     DiagnosticScore,
-    ProspectInfo
+    ProspectInfo,
+    Tier
 )
 
 
@@ -241,7 +242,6 @@ class ScoringEngine:
             score.capacidad_inversion.score_total >= 20):
             confidence += 0.1
 
-        # ✅ CORRECCIÓN CRÍTICA: Acceso correcto a urgencia_real
         if (score.viabilidad_comercial.score_total >= 20 and
             score.viabilidad_comercial.urgencia_real >= 7):
             confidence += 0.1
@@ -255,6 +255,7 @@ class ScoringEngine:
     ) -> DiagnosticScore:
         """Calcular score completo del diagnóstico"""
 
+        # Calcular componentes
         madurez = self.calculate_madurez_digital(responses)
         capacidad = self.calculate_capacidad_inversion(responses, prospect_info)
         viabilidad = self.calculate_viabilidad_comercial(responses)
@@ -262,31 +263,34 @@ class ScoringEngine:
         # Bonus por motivaciones
         bonus_motivacion = self.calculate_motivacion_score(responses.motivacion)
 
-        # Crear score preliminar
+        # Calcular score_final ANTES de crear DiagnosticScore
+        score_final_raw = (
+            madurez.score_total +
+            capacidad.score_total +
+            viabilidad.score_total +
+            bonus_motivacion
+        )
+        score_final = min(100, score_final_raw)
+
+        # Determinar tier ANTES de crear DiagnosticScore
+        if score_final >= 70:
+            tier = Tier.A
+        elif score_final >= 40:
+            tier = Tier.B
+        else:
+            tier = Tier.C
+
+        # Crear DiagnosticScore con valores calculados
         score = DiagnosticScore(
             madurez_digital=madurez,
             capacidad_inversion=capacidad,
             viabilidad_comercial=viabilidad,
-            score_final=0,  # Se calcula en __post_init__
-            tier=None,  # Se determina en __post_init__
-            confianza_clasificacion=0.0
+            score_final=score_final,
+            tier=tier,
+            confianza_clasificacion=0.0  # Se calcula después
         )
 
-        # Ajustar score final con bonus
-        score.score_final = min(100, score.score_final + bonus_motivacion)
-
-        # Recalcular tier si cambió el score
-        if score.score_final >= 70:
-            from core.models import Tier
-            score.tier = Tier.A
-        elif score.score_final >= 40:
-            from core.models import Tier
-            score.tier = Tier.B
-        else:
-            from core.models import Tier
-            score.tier = Tier.C
-
-        # Calcular confianza
+        # Calcular confianza (ahora score está completamente inicializado)
         score.confianza_clasificacion = self.calculate_confidence(score, responses)
 
         return score

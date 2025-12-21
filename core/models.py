@@ -59,15 +59,16 @@ class MadurezDigital:
     procesos_estandarizados: int  # 0-10
     sistemas_integrados: int  # 0-10
     eficiencia_operativa: int  # 0-10
-    score_total: int  # 0-40
+    score_total: int = 0  # 0-40
 
     def __post_init__(self):
-        self.score_total = (
-            self.decisiones_basadas_datos +
-            self.procesos_estandarizados +
-            self.sistemas_integrados +
-            self.eficiencia_operativa
-        )
+        if self.score_total == 0:  # Solo calcular si no fue provisto
+            self.score_total = (
+                self.decisiones_basadas_datos +
+                self.procesos_estandarizados +
+                self.sistemas_integrados +
+                self.eficiencia_operativa
+            )
 
 
 @dataclass
@@ -76,14 +77,15 @@ class CapacidadInversion:
     presupuesto_disponible: int  # 0-15
     historial_inversion: int  # 0-10
     tamano_empresa: int  # 0-5
-    score_total: int  # 0-30
+    score_total: int = 0  # 0-30
 
     def __post_init__(self):
-        self.score_total = (
-            self.presupuesto_disponible +
-            self.historial_inversion +
-            self.tamano_empresa
-        )
+        if self.score_total == 0:  # Solo calcular si no fue provisto
+            self.score_total = (
+                self.presupuesto_disponible +
+                self.historial_inversion +
+                self.tamano_empresa
+            )
 
 
 @dataclass
@@ -92,14 +94,15 @@ class ViabilidadComercial:
     problema_claro: int  # 0-10
     urgencia_real: int  # 0-10
     poder_decision: int  # 0-10
-    score_total: int  # 0-30
+    score_total: int = 0  # 0-30
 
     def __post_init__(self):
-        self.score_total = (
-            self.problema_claro +
-            self.urgencia_real +
-            self.poder_decision
-        )
+        if self.score_total == 0:  # Solo calcular si no fue provisto
+            self.score_total = (
+                self.problema_claro +
+                self.urgencia_real +
+                self.poder_decision
+            )
 
 
 @dataclass
@@ -110,22 +113,7 @@ class DiagnosticScore:
     viabilidad_comercial: ViabilidadComercial
     score_final: int  # 0-100
     tier: Tier
-    confianza_clasificacion: float  # 0.0-1.0
-
-    def __post_init__(self):
-        self.score_final = (
-            self.madurez_digital.score_total +
-            self.capacidad_inversion.score_total +
-            self.viabilidad_comercial.score_total
-        )
-
-        # Determinar tier basado en score
-        if self.score_final >= 70:
-            self.tier = Tier.A
-        elif self.score_final >= 40:
-            self.tier = Tier.B
-        else:
-            self.tier = Tier.C
+    confianza_clasificacion: float = 0.0  # 0.0-1.0, valor por defecto
 
 
 @dataclass
