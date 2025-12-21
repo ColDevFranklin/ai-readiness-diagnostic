@@ -22,25 +22,10 @@ st.set_page_config(
     layout="wide"
 )
 
-# Autenticación simple
+# Sin autenticación - Dashboard personal
 def check_password():
-    """Autenticación básica"""
-    def password_entered():
-        if st.session_state["password"] == st.secrets.get("dashboard_password", "admin123"):
-            st.session_state["password_correct"] = True
-            del st.session_state["password"]
-        else:
-            st.session_state["password_correct"] = False
-
-    if "password_correct" not in st.session_state:
-        st.text_input("Password", type="password", on_change=password_entered, key="password")
-        return False
-    elif not st.session_state["password_correct"]:
-        st.text_input("Password", type="password", on_change=password_entered, key="password")
-        st.error("😕 Password incorrecto")
-        return False
-    else:
-        return True
+    """Sin password - acceso directo"""
+    return True
 
 def load_data():
     """Cargar datos desde Google Sheets"""
