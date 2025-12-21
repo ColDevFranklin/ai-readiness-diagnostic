@@ -1,6 +1,3 @@
-"""
-Formulario de Diagnóstico AI Readiness - Aplicación Principal
-"""
 
 import streamlit as st
 import json
