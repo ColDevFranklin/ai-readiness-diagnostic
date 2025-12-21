@@ -241,8 +241,9 @@ class ScoringEngine:
             score.capacidad_inversion.score_total >= 20):
             confidence += 0.1
 
+        # ✅ CORRECCIÓN CRÍTICA: Acceso correcto a urgencia_real
         if (score.viabilidad_comercial.score_total >= 20 and
-            score.urgencia_real >= 7):
+            score.viabilidad_comercial.urgencia_real >= 7):
             confidence += 0.1
 
         return max(0.0, min(1.0, confidence))
