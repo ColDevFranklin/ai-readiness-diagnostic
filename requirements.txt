@@ -1,0 +1,22 @@
+# Core framework
+streamlit==1.29.0
+
+# Data processing
+pandas==2.0.3
+numpy==1.24.3
+
+# Visualization
+plotly==5.17.0
+
+# Google Sheets integration
+gspread==5.11.3
+oauth2client==4.1.3
+
+# PDF generation
+reportlab==4.0.7
+
+# Email
+python-decouple==3.8
+
+# Utilities
+python-dateutil==2.8.2

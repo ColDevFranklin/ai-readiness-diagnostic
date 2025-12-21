@@ -1,0 +1,173 @@
+{
+  "bloque_1_identificacion": {
+    "titulo": "Cuéntenos sobre su empresa",
+    "descripcion": "Información básica para entender su contexto",
+    "preguntas": [
+      {
+        "id": "Q4",
+        "tipo": "multiselect",
+        "pregunta": "¿Qué lo trae aquí hoy?",
+        "helper": "Puede seleccionar varias opciones",
+        "opciones": [
+          "Mis competidores están usando IA y me están dejando atrás",
+          "Tengo procesos lentos y costosos que creo que la IA podría mejorar",
+          "Quiero reducir costos operativos",
+          "Me mandaron a explorar esto (junta directiva/socios)",
+          "Tengo un problema específico que resolver",
+          "Curiosidad / exploración general"
+        ],
+        "requerido": true
+      }
+    ]
+  },
+  "bloque_2_diagnostico": {
+    "titulo": "Diagnóstico de su operación",
+    "descripcion": "Entender cómo funciona su empresa hoy",
+    "preguntas": [
+      {
+        "id": "Q5",
+        "tipo": "radio",
+        "pregunta": "¿Cómo toman decisiones importantes en su empresa hoy?",
+        "opciones": [
+          "Basados en reportes automáticos de sistemas",
+          "Basados en reportes que alguien arma manualmente",
+          "Basados en Excel que alimentamos nosotros",
+          "Basados en intuición y experiencia",
+          "Basados en 'ir preguntando a cada área'"
+        ],
+        "requerido": true
+      },
+      {
+        "id": "Q6",
+        "tipo": "radio",
+        "pregunta": "Sus procesos críticos (ventas, operaciones, servicio al cliente):",
+        "opciones": [
+          "Están documentados y son iguales siempre",
+          "Dependen de quién los ejecute",
+          "Funcionan pero nadie sabe exactamente cómo",
+          "Cambian constantemente según la situación"
+        ],
+        "requerido": true
+      },
+      {
+        "id": "Q7",
+        "tipo": "radio",
+        "pregunta": "¿Cuánto tiempo demoran sus empleados haciendo tareas repetitivas?",
+        "helper": "Ej: copiar datos, hacer reportes manuales, consolidar información",
+        "opciones": [
+          "Menos del 20% del tiempo",
+          "20-40% del tiempo",
+          "40-60% del tiempo",
+          "Más del 60% del tiempo",
+          "No tengo idea"
+        ],
+        "requerido": true
+      },
+      {
+        "id": "Q8",
+        "tipo": "radio",
+        "pregunta": "¿Sus diferentes áreas (ventas, operaciones, finanzas) comparten información fácilmente?",
+        "opciones": [
+          "Sí, todo está en sistemas conectados",
+          "Más o menos, hay que pedirse cosas por email/WhatsApp",
+          "No, cada área tiene su propia información",
+          "¿Qué información? (Cada uno tiene su Excel)"
+        ],
+        "requerido": true
+      },
+      {
+        "id": "Q9",
+        "tipo": "radio",
+        "pregunta": "¿Tiene equipo técnico (IT/Sistemas) interno?",
+        "opciones": [
+          "Sí, equipo completo (5+ personas)",
+          "Sí, pequeño (1-4 personas)",
+          "No, contratamos externos cuando se necesita",
+          "No, yo mismo/mi contador/mi sobrino nos ayuda"
+        ],
+        "requerido": true
+      },
+      {
+        "id": "Q10",
+        "tipo": "radio",
+        "pregunta": "Si quisiera implementar una nueva herramienta tecnológica mañana:",
+        "opciones": [
+          "Tenemos presupuesto y podemos decidir",
+          "Tendríamos que aprobar presupuesto (1-3 meses)",
+          "Tendríamos que planificarlo para próximo año",
+          "No hay presupuesto disponible"
+        ],
+        "requerido": true
+      },
+      {
+        "id": "Q11",
+        "tipo": "radio",
+        "pregunta": "¿Ha invertido en tecnología/digitalización en los últimos 2 años?",
+        "opciones": [
+          "Sí, inversiones significativas (>$50M COP)",
+          "Sí, inversiones moderadas ($10-50M COP)",
+          "Sí, inversiones pequeñas (<$10M COP)",
+          "No, seguimos con lo mismo de siempre"
+        ],
+        "requerido": true
+      },
+      {
+        "id": "Q12",
+        "tipo": "radio",
+        "pregunta": "Su mayor frustración operativa hoy es:",
+        "opciones": [
+          "No puedo escalar sin contratar más gente",
+          "Perdemos clientes por servicio lento",
+          "Cometemos muchos errores manuales",
+          "No sé qué está pasando en tiempo real",
+          "Los costos operativos están muy altos"
+        ],
+        "tiene_otro": true,
+        "requerido": true
+      }
+    ]
+  },
+  "bloque_3_viabilidad": {
+    "titulo": "Su situación actual",
+    "descripcion": "Para entender cómo podemos ayudarlo mejor",
+    "preguntas": [
+      {
+        "id": "Q13",
+        "tipo": "radio",
+        "pregunta": "¿Qué tan urgente es esto para usted?",
+        "opciones": [
+          "Muy urgente, necesito resolver ya (próximos 3 meses)",
+          "Importante, quiero avanzar este año",
+          "Exploración, sin apuro",
+          "Solo estoy mirando opciones"
+        ],
+        "requerido": true
+      },
+      {
+        "id": "Q14",
+        "tipo": "radio",
+        "pregunta": "Si le presento una propuesta que resuelva sus problemas, ¿quién más debe aprobarla?",
+        "opciones": [
+          "Nadie, yo decido",
+          "Mi socio(s)",
+          "Junta directiva",
+          "Varias personas (complejo)"
+        ],
+        "requerido": true
+      },
+      {
+        "id": "Q15",
+        "tipo": "radio",
+        "pregunta": "Presupuesto aproximado que tendría para un proyecto de este tipo:",
+        "opciones": [
+          "Menos de $10M COP",
+          "$10M - $30M COP",
+          "$30M - $60M COP",
+          "Más de $60M COP",
+          "Prefiero no decirlo / No lo sé aún"
+        ],
+        "requerido": true
+      }
+    ]
+  }
+}
