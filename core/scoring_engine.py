@@ -242,6 +242,7 @@ class ScoringEngine:
             score.capacidad_inversion.score_total >= 20):
             confidence += 0.1
 
+        # ✅ CORRECCIÓN: urgencia_real está en viabilidad_comercial, no en score
         if (score.viabilidad_comercial.score_total >= 20 and
             score.viabilidad_comercial.urgencia_real >= 7):
             confidence += 0.1
