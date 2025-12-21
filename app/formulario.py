@@ -1,3 +1,6 @@
+"""
+Formulario de Diagnóstico AI Readiness - Aplicación Principal
+"""
 
 import streamlit as st
 import json
@@ -368,7 +371,7 @@ def show_confirmation_screen(result):
         # Limpiar session state
         for key in list(st.session_state.keys()):
             del st.session_state[key]
-        st.experimental_rerun()
+        st.rerun()
 
 def main():
     """Función principal de la aplicación"""
@@ -384,7 +387,7 @@ def main():
         if collect_prospect_info():
             if st.button("Continuar al diagnóstico →"):
                 st.session_state.step = 1
-                st.experimental_rerun()
+                st.rerun()
         else:
             st.warning("⚠️ Por favor complete todos los campos marcados con *")
 
@@ -423,7 +426,7 @@ def main():
                     # Guardar resultado en session state
                     st.session_state.result = result
                     st.session_state.step = 2
-                    st.experimental_rerun()
+                    st.rerun()
         else:
             st.warning("⚠️ Por favor responda todas las preguntas para continuar")
 
