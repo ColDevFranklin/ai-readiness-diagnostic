@@ -84,14 +84,57 @@ def load_questions():
     with open(questions_path, 'r', encoding='utf-8') as f:
         return json.load(f)
 
-# Inicializar session state
+# ============================================================================
+# CORRECCIÓN CRÍTICA: Inicialización completa de session_state
+# ============================================================================
 def init_session_state():
+    """Inicializar TODAS las variables de session_state"""
+
+    # Control de flujo
     if 'step' not in st.session_state:
         st.session_state.step = 0
-    if 'responses' not in st.session_state:
-        st.session_state.responses = {}
-    if 'prospect_info' not in st.session_state:
-        st.session_state.prospect_info = {}
+
+    # Información de prospecto - valores por defecto vacíos
+    prospect_defaults = {
+        'nombre_empresa': '',
+        'sector': '',
+        'facturacion': '',
+        'empleados': '',
+        'contacto_nombre': '',
+        'contacto_email': '',
+        'contacto_telefono': '',
+        'cargo': '',
+        'ciudad': ''
+    }
+
+    for key, default in prospect_defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = default
+
+    # Respuestas del diagnóstico
+    diagnostic_defaults = {
+        'Q4': [],      # multiselect
+        'Q5': None,
+        'Q6': None,
+        'Q7': None,
+        'Q8': None,
+        'Q9': None,
+        'Q10': None,
+        'Q11': None,
+        'Q12': None,
+        'Q12_otro': '',  # campo condicional
+        'Q13': None,
+        'Q14': None,
+        'Q15': None
+    }
+
+    for key, default in diagnostic_defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = default
+
+    # Resultado final
+    if 'result' not in st.session_state:
+        st.session_state.result = None
 
 def show_header():
     """Mostrar header principal"""
@@ -172,10 +215,16 @@ def collect_prospect_info():
             placeholder="Ej: Villavicencio"
         )
 
-    # Validar campos requeridos
+    # Validar campos requeridos - usar .strip() para evitar espacios en blanco
     required_fields = [
-        nombre_empresa, sector, facturacion, empleados,
-        contacto_nombre, contacto_email, cargo, ciudad
+        nombre_empresa.strip(),
+        sector,
+        facturacion,
+        empleados,
+        contacto_nombre.strip(),
+        contacto_email.strip(),
+        cargo,
+        ciudad.strip()
     ]
 
     return all(required_fields)
@@ -235,10 +284,14 @@ def show_diagnostic_questions():
         )
 
     # Validar que todas las preguntas estén respondidas
-    required_questions = ["Q4", "Q5", "Q6", "Q7", "Q8", "Q9", "Q10", "Q11", "Q12", "Q13", "Q14", "Q15"]
-    all_answered = all(st.session_state.get(q) for q in required_questions)
+    # Q4 es multiselect, debe tener al menos 1 elemento
+    q4_valid = len(st.session_state.get("Q4", [])) > 0
 
-    return all_answered
+    # Q5-Q15 son radio buttons, deben ser != None
+    radio_questions = ["Q5", "Q6", "Q7", "Q8", "Q9", "Q10", "Q11", "Q12", "Q13", "Q14", "Q15"]
+    radio_valid = all(st.session_state.get(q) is not None for q in radio_questions)
+
+    return q4_valid and radio_valid
 
 def process_diagnostic():
     """Procesar el diagnóstico completo"""
@@ -376,6 +429,9 @@ def show_confirmation_screen(result):
 def main():
     """Función principal de la aplicación"""
 
+    # ============================================================================
+    # CRÍTICO: Inicializar ANTES de cualquier otra operación
+    # ============================================================================
     init_session_state()
     show_header()
 
@@ -387,7 +443,7 @@ def main():
         if collect_prospect_info():
             if st.button("Continuar al diagnóstico →"):
                 st.session_state.step = 1
-                st.rerun()
+                st.rerun()  # ✅ Correcto: st.rerun() en vez de st.experimental_rerun()
         else:
             st.warning("⚠️ Por favor complete todos los campos marcados con *")
 
@@ -426,7 +482,7 @@ def main():
                     # Guardar resultado en session state
                     st.session_state.result = result
                     st.session_state.step = 2
-                    st.rerun()
+                    st.rerun()  # ✅ Correcto
         else:
             st.warning("⚠️ Por favor responda todas las preguntas para continuar")
 
