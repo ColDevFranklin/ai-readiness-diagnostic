@@ -1,5 +1,6 @@
 """
-Sistema de envío de emails automatizados
+Sistema de envío de emails - Version 2.0
+FIXED: SMTP error handling + comprehensive logging
 """
 
 import smtplib
@@ -9,6 +10,8 @@ from email.mime.application import MIMEApplication
 from pathlib import Path
 from typing import Optional
 import streamlit as st
+import traceback
+from datetime import datetime
 
 from core.models import DiagnosticResult
 
@@ -17,36 +20,28 @@ class EmailSender:
     """Envío de emails automatizados según Tier"""
 
     def __init__(self):
-        # Configuración desde secrets
         self.smtp_server = st.secrets.get("smtp_server", "smtp.gmail.com")
-        self.smtp_port = st.secrets.get("smtp_port", 587)
+        self.smtp_port = int(st.secrets.get("smtp_port", 587))
         self.sender_email = st.secrets.get("sender_email")
         self.sender_password = st.secrets.get("sender_password")
         self.sender_name = "Andrés - AI Consulting"
+
+        print(f"[EMAIL INIT] SMTP: {self.smtp_server}:{self.smtp_port} | Sender: {self.sender_email}")
 
     def send_confirmation_email(
         self,
         result: DiagnosticResult,
         pdf_path: Optional[Path] = None
     ) -> bool:
-        """
-        Enviar email de confirmación según Tier
-
-        Args:
-            result: Resultado completo del diagnóstico
-            pdf_path: Path opcional al PDF adjunto
-
-        Returns:
-            bool: True si se envió exitosamente
-        """
+        """Enviar email de confirmación según Tier"""
 
         try:
-            # Crear mensaje
+            print(f"[EMAIL START] Enviando a {result.prospect_info.contacto_email} | Tier: {result.score.tier.value}")
+
             msg = MIMEMultipart()
             msg['From'] = f"{self.sender_name} <{self.sender_email}>"
             msg['To'] = result.prospect_info.contacto_email
 
-            # Determinar template según Tier
             if result.score.tier.value == "A":
                 subject, body = self._get_tier_a_content(result)
             elif result.score.tier.value == "B":
@@ -55,11 +50,8 @@ class EmailSender:
                 subject, body = self._get_tier_c_content(result)
 
             msg['Subject'] = subject
-
-            # Agregar body HTML
             msg.attach(MIMEText(body, 'html'))
 
-            # Adjuntar PDF si existe
             if pdf_path and pdf_path.exists():
                 with open(pdf_path, 'rb') as f:
                     pdf_attachment = MIMEApplication(f.read(), _subtype='pdf')
@@ -69,22 +61,35 @@ class EmailSender:
                         filename=f'Diagnostico_AI_{result.prospect_info.nombre_empresa}.pdf'
                     )
                     msg.attach(pdf_attachment)
+                print(f"[EMAIL PDF] Adjuntando PDF: {pdf_path}")
 
-            # Enviar
-            with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
+            with smtplib.SMTP(self.smtp_server, self.smtp_port, timeout=30) as server:
+                server.set_debuglevel(1)
                 server.starttls()
                 server.login(self.sender_email, self.sender_password)
                 server.send_message(msg)
 
+            print(f"[EMAIL SUCCESS] Enviado a {result.prospect_info.contacto_email}")
             return True
 
+        except smtplib.SMTPAuthenticationError as e:
+            print(f"[EMAIL AUTH ERROR] Credenciales inválidas: {e}")
+            print(f"  Revisar sender_email y sender_password en Streamlit Secrets")
+            print(traceback.format_exc())
+            return False
+
+        except smtplib.SMTPException as e:
+            print(f"[EMAIL SMTP ERROR] {datetime.now()}: {e}")
+            print(traceback.format_exc())
+            return False
+
         except Exception as e:
-            print(f"Error enviando email: {e}")
+            print(f"[EMAIL ERROR] {datetime.now()}: {e}")
+            print(traceback.format_exc())
             return False
 
     def _get_tier_a_content(self, result: DiagnosticResult) -> tuple:
         """Template para Tier A"""
-
         subject = "✅ Resultados de su diagnóstico AI - Oportunidades identificadas"
 
         body = f"""
@@ -124,12 +129,10 @@ class EmailSender:
 
             <p>Adjunto encontrará un resumen ejecutivo de su diagnóstico.</p>
 
-            <p>¿Le viene bien hablar el <strong>[día específico]</strong> a las <strong>[hora]</strong>?</p>
-
             <p style="margin-top: 30px;">Saludos,<br/>
             <strong>Andrés</strong><br/>
             AI Consulting<br/>
-            [su email/teléfono]</p>
+            negusnett@gmail.com</p>
         </body>
         </html>
         """
@@ -138,7 +141,6 @@ class EmailSender:
 
     def _get_tier_b_content(self, result: DiagnosticResult) -> tuple:
         """Template para Tier B"""
-
         subject = "📊 Resultados de su diagnóstico AI"
 
         body = f"""
@@ -169,7 +171,8 @@ class EmailSender:
 
             <p style="margin-top: 30px;">Saludos,<br/>
             <strong>Andrés</strong><br/>
-            AI Consulting</p>
+            AI Consulting<br/>
+            negusnett@gmail.com</p>
         </body>
         </html>
         """
@@ -178,7 +181,6 @@ class EmailSender:
 
     def _get_tier_c_content(self, result: DiagnosticResult) -> tuple:
         """Template para Tier C"""
-
         subject = "📚 Recursos para iniciar su transformación digital"
 
         body = f"""
@@ -208,7 +210,8 @@ class EmailSender:
 
             <p style="margin-top: 30px;">Saludos,<br/>
             <strong>Andrés</strong><br/>
-            AI Consulting</p>
+            AI Consulting<br/>
+            negusnett@gmail.com</p>
         </body>
         </html>
         """

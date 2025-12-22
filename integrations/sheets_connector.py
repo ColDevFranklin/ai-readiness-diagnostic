@@ -1,6 +1,6 @@
 """
-Conector de Google Sheets para almacenar resultados de diagnósticos
-Version: 2.1 - Fixed field mapping WITHOUT breaking dependencies
+Conector de Google Sheets - Version 3.0 FINAL
+FIXED: Complete schema alignment + robust error handling
 """
 
 import gspread
@@ -58,7 +58,7 @@ class SheetsConnector:
             self._save_to_scores(result)
             self._update_analytics()
 
-            print(f"[SHEETS SAVE SUCCESS] {datetime.now()}: {result.prospect_info.nombre_empresa}")
+            print(f"[SHEETS SAVE SUCCESS] {datetime.now()}: {result.prospect_info.nombre_empresa} - {result.prospect_info.contacto_email}")
             return True
 
         except Exception as e:
@@ -114,7 +114,7 @@ class SheetsConnector:
         worksheet.append_row(row, value_input_option='USER_ENTERED')
 
     def _save_to_scores(self, result: DiagnosticResult):
-        """Guardar scores y clasificación - COMPLETE FIELD MAPPING"""
+        """Guardar scores - SCHEMA COMPLETAMENTE ALINEADO CON DASHBOARD"""
         worksheet = self._get_or_create_worksheet("scores")
 
         if worksheet.row_count == 1 or not worksheet.row_values(1):
@@ -135,6 +135,10 @@ class SheetsConnector:
             ]
             worksheet.append_row(headers)
 
+        # SAFE ACCESS con valores default
+        confianza_clasificacion = getattr(result.score, 'confianza_clasificacion', 0.0)
+        probabilidad_cierre = getattr(result.reunion_prep, 'probabilidad_cierre', 50)
+
         row = [
             result.created_at.strftime("%Y-%m-%d %H:%M:%S"),
             result.diagnostic_id,
@@ -149,7 +153,7 @@ class SheetsConnector:
             result.prospect_info.empleados_rango,
             result.score.score_final,
             result.score.tier.value,
-            result.score.confianza_clasificacion,
+            confianza_clasificacion,
             result.score.madurez_digital.score_total,
             result.score.madurez_digital.decisiones_basadas_datos,
             result.score.madurez_digital.procesos_estandarizados,
@@ -169,12 +173,13 @@ class SheetsConnector:
             result.servicio_sugerido,
             result.monto_sugerido_min,
             result.monto_sugerido_max,
-            result.reunion_prep.probabilidad_cierre,
+            probabilidad_cierre,
             len(result.quick_wins),
             len(result.red_flags)
         ]
 
         worksheet.append_row(row, value_input_option='USER_ENTERED')
+        print(f"[SCORES SAVED] {result.prospect_info.nombre_empresa} | Email: {result.prospect_info.contacto_email} | Score: {result.score.score_final}")
 
     def _update_analytics(self):
         """Actualizar métricas agregadas"""
@@ -192,11 +197,14 @@ class SheetsConnector:
             tier_b_count = len(df[df['tier'] == 'B'])
             tier_c_count = len(df[df['tier'] == 'C'])
 
-            score_promedio = df['score_final'].mean() if 'score_final' in df.columns else 0
-            prob_cierre_promedio = df['probabilidad_cierre'].mean() if 'probabilidad_cierre' in df.columns else 0
+            score_promedio = df['score_final'].mean() if 'score_final' in df.columns and len(df) > 0 else 0
+            prob_cierre_promedio = df['probabilidad_cierre'].mean() if 'probabilidad_cierre' in df.columns and len(df) > 0 else 0
 
-            df['pipeline_value'] = (df['monto_min'] + df['monto_max']) / 2 * (df['probabilidad_cierre'] / 100)
-            pipeline_total = df['pipeline_value'].sum()
+            if 'monto_min' in df.columns and 'monto_max' in df.columns and 'probabilidad_cierre' in df.columns:
+                df['pipeline_value'] = (df['monto_min'] + df['monto_max']) / 2 * (df['probabilidad_cierre'] / 100)
+                pipeline_total = df['pipeline_value'].sum()
+            else:
+                pipeline_total = 0
 
             analytics_ws = self._get_or_create_worksheet("analytics")
 
@@ -217,6 +225,7 @@ class SheetsConnector:
 
         except Exception as e:
             print(f"[ANALYTICS UPDATE ERROR] {datetime.now()}: {str(e)}")
+            print(traceback.format_exc())
 
     def get_all_diagnostics(self, limit: Optional[int] = None) -> List[Dict]:
         """Obtener todos los diagnósticos"""
@@ -232,6 +241,7 @@ class SheetsConnector:
 
         except Exception as e:
             print(f"[GET DIAGNOSTICS ERROR] {datetime.now()}: {str(e)}")
+            print(traceback.format_exc())
             return []
 
     def get_tier_a_diagnostics(self) -> List[Dict]:
@@ -253,4 +263,5 @@ class SheetsConnector:
 
         except Exception as e:
             print(f"[GET ANALYTICS ERROR] {datetime.now()}: {str(e)}")
+            print(traceback.format_exc())
             return {}

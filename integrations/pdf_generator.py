@@ -1,5 +1,6 @@
 """
-Generador de PDFs para prospectos
+Generador de PDFs - Version 2.0
+FIXED: Streamlit Cloud compatible path
 """
 
 from reportlab.lib.pagesizes import letter
@@ -9,6 +10,7 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.lib.units import inch
 from datetime import datetime
 from pathlib import Path
+import tempfile
 
 from core.models import DiagnosticResult
 
@@ -17,10 +19,9 @@ class PDFGenerator:
     """Generador de PDFs ejecutivos para prospectos"""
 
     def __init__(self):
-        self.output_dir = Path("/home/claude/ai_readiness_diagnostic/output/pdfs")
+        self.output_dir = Path(tempfile.gettempdir()) / "ai_diagnostics"
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-        # Estilos
         self.styles = getSampleStyleSheet()
         self.title_style = ParagraphStyle(
             'CustomTitle',
@@ -38,12 +39,7 @@ class PDFGenerator:
         )
 
     def generate_prospect_pdf(self, result: DiagnosticResult) -> Path:
-        """
-        Generar PDF de 2 páginas para el prospecto
-
-        Returns:
-            Path al PDF generado
-        """
+        """Generar PDF de 2 páginas para el prospecto"""
 
         filename = f"diagnostico_{result.diagnostic_id}.pdf"
         filepath = self.output_dir / filename
@@ -51,12 +47,10 @@ class PDFGenerator:
         doc = SimpleDocTemplate(str(filepath), pagesize=letter)
         story = []
 
-        # PÁGINA 1: SU SITUACIÓN ACTUAL
         story.append(Paragraph("Diagnóstico AI Readiness", self.title_style))
         story.append(Paragraph(f"{result.prospect_info.nombre_empresa}", self.styles['Heading2']))
         story.append(Spacer(1, 0.3*inch))
 
-        # Score general
         story.append(Paragraph("Su Situación Actual", self.heading_style))
 
         scores_data = [
@@ -92,7 +86,6 @@ class PDFGenerator:
         story.append(score_table)
         story.append(Spacer(1, 0.3*inch))
 
-        # Fortalezas y Oportunidades
         story.append(Paragraph("Fortalezas Identificadas", self.heading_style))
 
         fortalezas_text = "<br/>".join([
@@ -114,23 +107,21 @@ class PDFGenerator:
             f"• {insight.descripcion}"
             for insight in result.insights
             if insight.categoria == "oportunidad"
-        ][:3])  # Máximo 3
+        ][:3])
 
         if oportunidades_text:
             story.append(Paragraph(oportunidades_text, self.styles['BodyText']))
         else:
             story.append(Paragraph("• Múltiples oportunidades identificadas", self.styles['BodyText']))
 
-        # PÁGINA 2: PRÓXIMOS PASOS
         story.append(PageBreak())
 
         story.append(Paragraph("Próximos Pasos Sugeridos", self.title_style))
         story.append(Spacer(1, 0.2*inch))
 
-        # Quick Wins
         story.append(Paragraph("Quick Wins (3-6 meses)", self.heading_style))
 
-        for qw in result.quick_wins[:2]:  # Máximo 2
+        for qw in result.quick_wins[:2]:
             qw_text = f"""
             <b>{qw.titulo}</b><br/>
             {qw.descripcion}<br/>
@@ -141,7 +132,6 @@ class PDFGenerator:
 
         story.append(Spacer(1, 0.2*inch))
 
-        # Resultados esperados
         story.append(Paragraph("Resultados Esperados", self.heading_style))
 
         resultados_text = f"""
@@ -156,7 +146,6 @@ class PDFGenerator:
         story.append(Paragraph(resultados_text, self.styles['BodyText']))
         story.append(Spacer(1, 0.3*inch))
 
-        # Próximos pasos
         story.append(Paragraph("¿Qué sigue?", self.heading_style))
 
         next_steps_text = f"""
@@ -167,13 +156,13 @@ class PDFGenerator:
         4. Responder todas sus preguntas<br/><br/>
 
         <b>Contacto:</b> Andrés - AI Consulting<br/>
-        <b>Email:</b> [su email de consultoría]
+        <b>Email:</b> negusnett@gmail.com
         """
 
         story.append(Paragraph(next_steps_text, self.styles['BodyText']))
 
-        # Generar PDF
         doc.build(story)
+        print(f"[PDF SUCCESS] Generado en {filepath}")
 
         return filepath
 
