@@ -1,3 +1,4 @@
+'''core/scoring_engine.py'''
 from typing import Dict, Tuple
 from core.models import (
     DiagnosticResponses,

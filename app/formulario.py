@@ -1,6 +1,5 @@
 """
 Formulario de Diagnóstico AI Readiness - Aplicación Principal
-Version: 2.0 - Error handling robusto + logging
 """
 
 import streamlit as st
@@ -8,13 +7,12 @@ import json
 from datetime import datetime
 from pathlib import Path
 import sys
-import traceback
 
 # Agregar path del proyecto
 sys.path.append(str(Path(__file__).parent.parent))
 
 from app.config import *
-from core.models import ProspectInfo, DiagnosticResponses, DiagnosticResult
+from core.models import ProspectInfo, DiagnosticResponses
 from core.scoring_engine import ScoringEngine
 from core.classifier import ArchetypeClassifier, InsightGenerator
 from integrations.sheets_connector import SheetsConnector
@@ -30,52 +28,438 @@ st.set_page_config(
 )
 
 # CSS personalizado
+# CSS personalizado - Sistema de Diseño Profesional
 st.markdown("""
 <style>
+    /* ============================================
+       VARIABLES DE DISEÑO - Design Tokens
+       ============================================ */
+    :root {
+        /* Colores principales */
+        --primary-600: #2563eb;
+        --primary-700: #1d4ed8;
+        --primary-50: #eff6ff;
+
+        /* Neutrales */
+        --gray-900: #111827;
+        --gray-800: #1f2937;
+        --gray-700: #374151;
+        --gray-600: #4b5563;
+        --gray-500: #6b7280;
+        --gray-400: #9ca3af;
+        --gray-300: #d1d5db;
+        --gray-200: #e5e7eb;
+        --gray-100: #f3f4f6;
+        --gray-50: #f9fafb;
+
+        /* Semánticos */
+        --success-600: #059669;
+        --success-50: #ecfdf5;
+        --warning-600: #d97706;
+        --warning-50: #fffbeb;
+        --error-600: #dc2626;
+        --error-50: #fef2f2;
+
+        /* Espaciado (8px grid) */
+        --space-1: 0.25rem;  /* 4px */
+        --space-2: 0.5rem;   /* 8px */
+        --space-3: 0.75rem;  /* 12px */
+        --space-4: 1rem;     /* 16px */
+        --space-5: 1.25rem;  /* 20px */
+        --space-6: 1.5rem;   /* 24px */
+        --space-8: 2rem;     /* 32px */
+        --space-10: 2.5rem;  /* 40px */
+        --space-12: 3rem;    /* 48px */
+        --space-16: 4rem;    /* 64px */
+
+        /* Tipografía */
+        --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        --font-display: "Inter", var(--font-sans);
+
+        /* Sombras */
+        --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+        --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+
+        /* Border radius */
+        --radius-sm: 0.375rem;
+        --radius-md: 0.5rem;
+        --radius-lg: 0.75rem;
+        --radius-xl: 1rem;
+    }
+
+    /* ============================================
+       RESET & BASE
+       ============================================ */
+    .main {
+        background: linear-gradient(135deg, var(--gray-50) 0%, #ffffff 100%);
+        font-family: var(--font-sans);
+    }
+
+    .block-container {
+        max-width: 1200px;
+        padding-top: var(--space-8);
+        padding-bottom: var(--space-16);
+    }
+
+    /* ============================================
+       HEADER PRINCIPAL
+       ============================================ */
     .main-header {
-        font-size: 2.5rem;
-        font-weight: 700;
-        color: #1f2937;
-        margin-bottom: 1rem;
+        font-family: var(--font-display);
+        font-size: 3rem;
+        font-weight: 800;
+        background: linear-gradient(135deg, var(--primary-600) 0%, var(--primary-700) 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        margin-bottom: var(--space-4);
+        line-height: 1.2;
+        letter-spacing: -0.02em;
     }
+
     .sub-header {
-        font-size: 1.2rem;
-        color: #6b7280;
-        margin-bottom: 2rem;
+        font-size: 1.25rem;
+        color: var(--gray-600);
+        margin-bottom: var(--space-10);
+        font-weight: 400;
+        line-height: 1.6;
     }
+
+    /* ============================================
+       BARRA DE PROGRESO MEJORADA
+       ============================================ */
+    .progress-container {
+        background: white;
+        border-radius: var(--radius-xl);
+        padding: var(--space-6);
+        margin-bottom: var(--space-8);
+        box-shadow: var(--shadow-md);
+        border: 1px solid var(--gray-200);
+    }
+
     .progress-text {
-        font-size: 0.9rem;
-        color: #6b7280;
-        margin-bottom: 0.5rem;
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: var(--gray-700);
+        margin-bottom: var(--space-3);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
     }
+
+    .progress-step {
+        color: var(--primary-600);
+        font-size: 1.125rem;
+    }
+
+    .stProgress > div > div > div {
+        background: linear-gradient(90deg, var(--primary-600) 0%, var(--primary-700) 100%);
+        border-radius: var(--radius-lg);
+        height: 12px;
+    }
+
+    .stProgress > div > div {
+        background-color: var(--gray-200);
+        border-radius: var(--radius-lg);
+        height: 12px;
+    }
+
+    /* ============================================
+       SECCIONES
+       ============================================ */
     .section-header {
-        font-size: 1.5rem;
-        font-weight: 600;
-        color: #374151;
-        margin-top: 2rem;
-        margin-bottom: 1rem;
-        border-bottom: 2px solid #e5e7eb;
-        padding-bottom: 0.5rem;
+        font-size: 1.75rem;
+        font-weight: 700;
+        color: var(--gray-900);
+        margin-top: var(--space-12);
+        margin-bottom: var(--space-6);
+        padding-bottom: var(--space-4);
+        border-bottom: 3px solid var(--primary-600);
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
     }
-    .question-label {
-        font-size: 1.1rem;
-        font-weight: 500;
-        color: #1f2937;
-        margin-bottom: 0.5rem;
+
+    .section-card {
+        background: white;
+        border-radius: var(--radius-xl);
+        padding: var(--space-8);
+        margin-bottom: var(--space-6);
+        box-shadow: var(--shadow-lg);
+        border: 1px solid var(--gray-200);
+        transition: all 0.3s ease;
     }
-    .stButton>button {
+
+    .section-card:hover {
+        box-shadow: var(--shadow-xl);
+        transform: translateY(-2px);
+    }
+
+    /* ============================================
+       INPUTS & FORMS
+       ============================================ */
+    .stTextInput > div > div > input,
+    .stSelectbox > div > div > div,
+    .stMultiSelect > div > div > div {
+        border-radius: var(--radius-md) !important;
+        border: 2px solid var(--gray-300) !important;
+        font-size: 1rem !important;
+        padding: var(--space-3) var(--space-4) !important;
+        transition: all 0.2s ease !important;
+        background: white !important;
+    }
+
+    .stTextInput > div > div > input:focus,
+    .stSelectbox > div > div > div:focus-within,
+    .stMultiSelect > div > div > div:focus-within {
+        border-color: var(--primary-600) !important;
+        box-shadow: 0 0 0 3px var(--primary-50) !important;
+        outline: none !important;
+    }
+
+    /* Labels de inputs */
+    .stTextInput > label,
+    .stSelectbox > label,
+    .stMultiSelect > label {
+        font-size: 0.9375rem !important;
+        font-weight: 600 !important;
+        color: var(--gray-800) !important;
+        margin-bottom: var(--space-2) !important;
+    }
+
+    /* ============================================
+       RADIO BUTTONS
+       ============================================ */
+    .stRadio > label {
+        font-size: 1.0625rem !important;
+        font-weight: 600 !important;
+        color: var(--gray-900) !important;
+        margin-bottom: var(--space-4) !important;
+    }
+
+    .stRadio > div {
+        background: var(--gray-50);
+        padding: var(--space-4);
+        border-radius: var(--radius-lg);
+        border: 1px solid var(--gray-200);
+    }
+
+    .stRadio > div > label {
+        background: white;
+        padding: var(--space-4);
+        border-radius: var(--radius-md);
+        margin-bottom: var(--space-2);
+        border: 2px solid var(--gray-200);
+        transition: all 0.2s ease;
+        cursor: pointer;
+    }
+
+    .stRadio > div > label:hover {
+        border-color: var(--primary-600);
+        background: var(--primary-50);
+        transform: translateX(4px);
+    }
+
+    /* ============================================
+       BOTONES
+       ============================================ */
+    .stButton > button {
         width: 100%;
-        background-color: #2563eb;
+        background: linear-gradient(135deg, var(--primary-600) 0%, var(--primary-700) 100%);
         color: white;
-        font-weight: 600;
-        padding: 0.75rem 1.5rem;
-        border-radius: 0.5rem;
+        font-weight: 700;
+        font-size: 1.125rem;
+        padding: var(--space-4) var(--space-8);
+        border-radius: var(--radius-lg);
         border: none;
+        box-shadow: var(--shadow-md);
+        transition: all 0.3s ease;
+        letter-spacing: 0.025em;
+        text-transform: none;
+    }
+
+    .stButton > button:hover {
+        background: linear-gradient(135deg, var(--primary-700) 0%, var(--primary-600) 100%);
+        box-shadow: var(--shadow-lg);
+        transform: translateY(-2px);
+    }
+
+    .stButton > button:active {
+        transform: translateY(0);
+    }
+
+    /* ============================================
+       ALERTAS & MENSAJES
+       ============================================ */
+    .stAlert {
+        border-radius: var(--radius-lg);
+        border-left-width: 4px;
+        padding: var(--space-5);
         font-size: 1rem;
+        line-height: 1.6;
     }
-    .stButton>button:hover {
-        background-color: #1d4ed8;
+
+    .stSuccess {
+        background-color: var(--success-50);
+        border-left-color: var(--success-600);
     }
+
+    .stWarning {
+        background-color: var(--warning-50);
+        border-left-color: var(--warning-600);
+    }
+
+    .stInfo {
+        background-color: var(--primary-50);
+        border-left-color: var(--primary-600);
+    }
+
+    /* ============================================
+       MÉTRICAS
+       ============================================ */
+    [data-testid="stMetricValue"] {
+        font-size: 2.5rem;
+        font-weight: 800;
+        color: var(--primary-600);
+    }
+
+    [data-testid="stMetricLabel"] {
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: var(--gray-600);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    [data-testid="metric-container"] {
+        background: white;
+        padding: var(--space-6);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-md);
+        border: 1px solid var(--gray-200);
+    }
+
+    /* ============================================
+       EXPANDER
+       ============================================ */
+    .streamlit-expanderHeader {
+        background-color: var(--gray-100);
+        border-radius: var(--radius-md);
+        font-weight: 600;
+        color: var(--gray-800);
+        padding: var(--space-4);
+    }
+
+    .streamlit-expanderHeader:hover {
+        background-color: var(--gray-200);
+    }
+
+    /* ============================================
+       SPINNER
+       ============================================ */
+    .stSpinner > div {
+        border-color: var(--primary-600);
+        border-right-color: transparent;
+    }
+
+    /* ============================================
+       COLUMNAS
+       ============================================ */
+    [data-testid="column"] {
+        padding: var(--space-2);
+    }
+
+    /* ============================================
+       TRUST ELEMENTS
+       ============================================ */
+    .trust-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--space-2);
+        background: white;
+        padding: var(--space-3) var(--space-5);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-sm);
+        border: 1px solid var(--gray-200);
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: var(--gray-700);
+        margin-right: var(--space-3);
+        margin-bottom: var(--space-3);
+    }
+
+    .security-notice {
+        background: linear-gradient(135deg, var(--gray-50) 0%, white 100%);
+        border: 2px solid var(--gray-200);
+        border-radius: var(--radius-lg);
+        padding: var(--space-5);
+        margin-top: var(--space-8);
+        font-size: 0.875rem;
+        color: var(--gray-600);
+        text-align: center;
+    }
+
+    /* ============================================
+       RESPONSIVE
+       ============================================ */
+    @media (max-width: 768px) {
+        .main-header {
+            font-size: 2rem;
+        }
+
+        .sub-header {
+            font-size: 1rem;
+        }
+
+        .section-header {
+            font-size: 1.5rem;
+        }
+
+        .section-card {
+            padding: var(--space-6);
+        }
+
+        [data-testid="stMetricValue"] {
+            font-size: 2rem;
+        }
+    }
+
+    /* ============================================
+       ANIMACIONES
+       ============================================ */
+    @keyframes fadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .section-card,
+    .progress-container {
+        animation: fadeInUp 0.6s ease-out;
+    }
+
+    /* ============================================
+       HELPER TEXT
+       ============================================ */
+    .stMarkdown small {
+        color: var(--gray-500);
+        font-size: 0.875rem;
+    }
+
+    /* ============================================
+       HIDE STREAMLIT BRANDING
+       ============================================ */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -86,6 +470,9 @@ def load_questions():
     with open(questions_path, 'r', encoding='utf-8') as f:
         return json.load(f)
 
+# ============================================================================
+# CORRECCIÓN CRÍTICA: Inicialización completa de session_state
+# ============================================================================
 def init_session_state():
     """Inicializar TODAS las variables de session_state"""
 
@@ -112,7 +499,7 @@ def init_session_state():
 
     # Respuestas del diagnóstico
     diagnostic_defaults = {
-        'Q4': [],
+        'Q4': [],      # multiselect
         'Q5': None,
         'Q6': None,
         'Q7': None,
@@ -121,7 +508,7 @@ def init_session_state():
         'Q10': None,
         'Q11': None,
         'Q12': None,
-        'Q12_otro': '',
+        'Q12_otro': '',  # campo condicional
         'Q13': None,
         'Q14': None,
         'Q15': None
@@ -134,12 +521,6 @@ def init_session_state():
     # Resultado final
     if 'result' not in st.session_state:
         st.session_state.result = None
-
-    # Status de integraciones
-    if 'email_sent' not in st.session_state:
-        st.session_state.email_sent = False
-    if 'pdf_generated' not in st.session_state:
-        st.session_state.pdf_generated = False
 
 def show_header():
     """Mostrar header principal"""
@@ -220,7 +601,7 @@ def collect_prospect_info():
             placeholder="Ej: Villavicencio"
         )
 
-    # Validar campos requeridos
+    # Validar campos requeridos - usar .strip() para evitar espacios en blanco
     required_fields = [
         nombre_empresa.strip(),
         sector,
@@ -256,6 +637,7 @@ def show_diagnostic_questions():
         helper = pregunta.get("helper", "")
 
         if pregunta.get("tiene_otro"):
+            # Radio con opción "Otro"
             opciones = pregunta["opciones"] + ["Otro"]
             respuesta = st.radio(
                 pregunta["pregunta"],
@@ -288,7 +670,10 @@ def show_diagnostic_questions():
         )
 
     # Validar que todas las preguntas estén respondidas
+    # Q4 es multiselect, debe tener al menos 1 elemento
     q4_valid = len(st.session_state.get("Q4", [])) > 0
+
+    # Q5-Q15 son radio buttons, deben ser != None
     radio_questions = ["Q5", "Q6", "Q7", "Q8", "Q9", "Q10", "Q11", "Q12", "Q13", "Q14", "Q15"]
     radio_valid = all(st.session_state.get(q) is not None for q in radio_questions)
 
@@ -297,6 +682,7 @@ def show_diagnostic_questions():
 def process_diagnostic():
     """Procesar el diagnóstico completo"""
 
+    # Crear objetos de datos
     prospect_info = ProspectInfo(
         nombre_empresa=st.session_state.nombre_empresa,
         sector=st.session_state.sector,
@@ -355,6 +741,8 @@ def process_diagnostic():
         servicio = "Workshop Educativo"
         monto_min, monto_max = 0, 5000000
 
+    # Crear resultado completo
+    from core.models import DiagnosticResult
     result = DiagnosticResult(
         prospect_info=prospect_info,
         responses=responses,
@@ -372,32 +760,16 @@ def process_diagnostic():
     return result
 
 def show_confirmation_screen(result):
-    """Mostrar pantalla de confirmación con status real de integraciones"""
+    """Mostrar pantalla de confirmación al prospecto"""
 
     st.markdown("## ✅ ¡Diagnóstico completado!")
 
-    email_sent = st.session_state.get("email_sent", False)
-    pdf_generated = st.session_state.get("pdf_generated", False)
+    st.success(f"""
+    Gracias **{result.prospect_info.contacto_nombre}** por completar el diagnóstico.
 
-    # Mensaje principal adaptativo
-    if email_sent:
-        st.success(f"""
-        Gracias **{result.prospect_info.contacto_nombre}** por completar el diagnóstico.
-
-        Hemos analizado la información de **{result.prospect_info.nombre_empresa}** y
-        identificamos oportunidades específicas para mejorar su operación con IA.
-
-        📧 **Confirmación enviada** a {result.prospect_info.contacto_email}
-        """)
-    else:
-        st.warning(f"""
-        Gracias **{result.prospect_info.contacto_nombre}** por completar el diagnóstico.
-
-        ⚠️ El email de confirmación no pudo ser enviado automáticamente.
-        Le contactaremos manualmente en las próximas 24 horas a:
-
-        📧 {result.prospect_info.contacto_email}
-        """)
+    Hemos analizado la información de **{result.prospect_info.nombre_empresa}** y
+    identificamos oportunidades específicas para mejorar su operación con IA.
+    """)
 
     st.markdown("### 📊 Resumen preliminar")
 
@@ -427,23 +799,15 @@ def show_confirmation_screen(result):
     **Lo contactaremos en las próximas 48 horas** para:
 
     1. Compartir el análisis completo de su diagnóstico
-    2. Mostrar casos de éxito relevantes para {result.prospect_info.sector}
+    2. Mostrarle casos de éxito relevantes para su sector
     3. Presentar una propuesta específica para {result.prospect_info.nombre_empresa}
 
-    **Datos de contacto confirmados:**
-    - Email: {result.prospect_info.contacto_email}
-    - Teléfono: {result.prospect_info.contacto_telefono or 'No proporcionado'}
+    Recibirá un email en **{result.prospect_info.contacto_email}** con un resumen
+    de este diagnóstico.
     """)
 
-    # Info técnica para debugging
-    if not email_sent or not pdf_generated:
-        with st.expander("ℹ️ Información técnica"):
-            st.write(f"- Diagnóstico guardado: ✅")
-            st.write(f"- Email enviado: {'✅' if email_sent else '❌'}")
-            st.write(f"- PDF generado: {'✅' if pdf_generated else '❌'}")
-            st.write(f"- Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-
     if st.button("🔄 Realizar otro diagnóstico"):
+        # Limpiar session state
         for key in list(st.session_state.keys()):
             del st.session_state[key]
         st.rerun()
@@ -451,9 +815,13 @@ def show_confirmation_screen(result):
 def main():
     """Función principal de la aplicación"""
 
+    # ============================================================================
+    # CRÍTICO: Inicializar ANTES de cualquier otra operación
+    # ============================================================================
     init_session_state()
     show_header()
 
+    # Determinar qué mostrar según el step
     if st.session_state.step == 0:
         # Paso 1: Información de contacto
         show_progress_bar(0, 2)
@@ -461,7 +829,7 @@ def main():
         if collect_prospect_info():
             if st.button("Continuar al diagnóstico →"):
                 st.session_state.step = 1
-                st.rerun()
+                st.rerun()  # ✅ Correcto: st.rerun() en vez de st.experimental_rerun()
         else:
             st.warning("⚠️ Por favor complete todos los campos marcados con *")
 
@@ -472,69 +840,35 @@ def main():
         if show_diagnostic_questions():
             if st.button("Enviar diagnóstico"):
                 with st.spinner("Procesando su diagnóstico..."):
-
-                    # PASO 1: Procesar diagnóstico
+                    # Procesar diagnóstico
                     result = process_diagnostic()
 
-                    # PASO 2: Guardar en Sheets (CRÍTICO)
-                    save_success = False
-
+                    # Guardar en Google Sheets
                     try:
                         connector = SheetsConnector()
                         connector.save_diagnostic(result)
-                        save_success = True
-                        st.success("✅ Diagnóstico guardado exitosamente")
-
                     except Exception as e:
-                        st.error(f"❌ Error crítico al guardar diagnóstico: {e}")
-                        st.error("Por favor intente nuevamente o contacte soporte.")
-                        print(f"[ERROR SHEETS] {datetime.now()}: {traceback.format_exc()}")
+                        st.error(f"Error al guardar: {e}")
 
-                        if st.button("🔄 Reintentar guardado"):
-                            st.rerun()
-                        st.stop()
+                    # Generar PDF
+                    try:
+                        pdf_gen = PDFGenerator()
+                        pdf_path = pdf_gen.generate_prospect_pdf(result)
+                    except Exception as e:
+                        st.error(f"Error al generar PDF: {e}")
+                        pdf_path = None
 
-                    # PASO 3: Generar PDF (best-effort)
-                    pdf_path = None
-                    pdf_success = False
+                    # Enviar email
+                    try:
+                        email_sender = EmailSender()
+                        email_sender.send_confirmation_email(result, pdf_path)
+                    except Exception as e:
+                        st.error(f"Error al enviar email: {e}")
 
-                    if save_success:
-                        try:
-                            pdf_gen = PDFGenerator()
-                            pdf_path = pdf_gen.generate_prospect_pdf(result)
-                            pdf_success = True
-                            st.success("✅ PDF generado exitosamente")
-
-                        except Exception as e:
-                            st.warning(f"⚠️ No se pudo generar PDF: {e}")
-                            st.info("El diagnóstico fue guardado, pero el PDF no está disponible.")
-                            print(f"[ERROR PDF] {datetime.now()}: {traceback.format_exc()}")
-
-                    # PASO 4: Enviar email (best-effort)
-                    email_success = False
-
-                    if save_success:
-                        try:
-                            email_sender = EmailSender()
-                            email_sender.send_confirmation_email(result, pdf_path)
-                            email_success = True
-                            st.success(f"✅ Email enviado a {result.prospect_info.contacto_email}")
-
-                        except Exception as e:
-                            st.warning(f"⚠️ No se pudo enviar email: {e}")
-                            st.info(
-                                f"El diagnóstico fue guardado correctamente. "
-                                f"Le contactaremos manualmente a {result.prospect_info.contacto_email}"
-                            )
-                            print(f"[ERROR EMAIL] {datetime.now()}: {traceback.format_exc()}")
-
-                    # PASO 5: Actualizar estado
-                    if save_success:
-                        st.session_state.result = result
-                        st.session_state.email_sent = email_success
-                        st.session_state.pdf_generated = pdf_success
-                        st.session_state.step = 2
-                        st.rerun()
+                    # Guardar resultado en session state
+                    st.session_state.result = result
+                    st.session_state.step = 2
+                    st.rerun()  # ✅ Correcto
         else:
             st.warning("⚠️ Por favor responda todas las preguntas para continuar")
 

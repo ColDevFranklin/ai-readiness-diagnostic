@@ -1,4 +1,5 @@
 """
+core/models.py
 Modelos de datos para el sistema de diagnóstico AI Readiness
 """
 
