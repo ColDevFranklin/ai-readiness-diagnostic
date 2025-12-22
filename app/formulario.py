@@ -533,10 +533,26 @@ def show_header():
 def show_progress_bar(current_step, total_steps):
     """Mostrar barra de progreso"""
     progress = (current_step + 1) / total_steps
-    st.markdown(
-        f'<div class="progress-text">Progreso: {int(progress * 100)}% completado</div>',
-        unsafe_allow_html=True
-    )
+    percentage = int(progress * 100)
+
+    steps = ["Información de Contacto", "Diagnóstico", "Confirmación"]
+
+    def show_progress_bar(current_step, total_steps):
+    """Mostrar barra de progreso profesional"""
+    progress = (current_step + 1) / total_steps
+    percentage = int(progress * 100)
+
+    steps = ["Información de Contacto", "Diagnóstico", "Confirmación"]
+
+    st.markdown(f"""
+    <div class="progress-container">
+        <div class="progress-text">
+            <span>Paso {current_step + 1} de {total_steps}: <strong>{steps[current_step]}</strong></span>
+            <span class="progress-step">{percentage}%</span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
     st.progress(progress)
 
 def collect_prospect_info():
