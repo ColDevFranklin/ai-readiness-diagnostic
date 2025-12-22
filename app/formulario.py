@@ -1,25 +1,30 @@
 """
 Formulario de Diagnóstico AI Readiness - Aplicación Principal
+Version: 3.0 - UI Profesional + Error Handling Robusto
 """
 
 import streamlit as st
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 import sys
+import traceback
 
 # Agregar path del proyecto
 sys.path.append(str(Path(__file__).parent.parent))
 
 from app.config import *
-from core.models import ProspectInfo, DiagnosticResponses
+from core.models import ProspectInfo, DiagnosticResponses, DiagnosticResult
 from core.scoring_engine import ScoringEngine
 from core.classifier import ArchetypeClassifier, InsightGenerator
 from integrations.sheets_connector import SheetsConnector
 from integrations.pdf_generator import PDFGenerator
 from integrations.email_sender import EmailSender
 
-# Configuración de página
+# ============================================================================
+# CONFIGURACIÓN DE PÁGINA
+# ============================================================================
 st.set_page_config(
     page_title="Diagnóstico AI Readiness",
     page_icon="🤖",
@@ -27,8 +32,9 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# CSS personalizado
-# CSS personalizado - Sistema de Diseño Profesional
+# ============================================================================
+# SISTEMA DE DISEÑO PROFESIONAL
+# ============================================================================
 st.markdown("""
 <style>
     /* ============================================
@@ -61,16 +67,16 @@ st.markdown("""
         --error-50: #fef2f2;
 
         /* Espaciado (8px grid) */
-        --space-1: 0.25rem;  /* 4px */
-        --space-2: 0.5rem;   /* 8px */
-        --space-3: 0.75rem;  /* 12px */
-        --space-4: 1rem;     /* 16px */
-        --space-5: 1.25rem;  /* 20px */
-        --space-6: 1.5rem;   /* 24px */
-        --space-8: 2rem;     /* 32px */
-        --space-10: 2.5rem;  /* 40px */
-        --space-12: 3rem;    /* 48px */
-        --space-16: 4rem;    /* 64px */
+        --space-1: 0.25rem;
+        --space-2: 0.5rem;
+        --space-3: 0.75rem;
+        --space-4: 1rem;
+        --space-5: 1.25rem;
+        --space-6: 1.5rem;
+        --space-8: 2rem;
+        --space-10: 2.5rem;
+        --space-12: 3rem;
+        --space-16: 4rem;
 
         /* Tipografía */
         --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -122,9 +128,28 @@ st.markdown("""
     .sub-header {
         font-size: 1.25rem;
         color: var(--gray-600);
-        margin-bottom: var(--space-10);
+        margin-bottom: var(--space-6);
         font-weight: 400;
         line-height: 1.6;
+    }
+
+    /* ============================================
+       TRUST BADGES
+       ============================================ */
+    .trust-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--space-2);
+        background: white;
+        padding: var(--space-3) var(--space-5);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-sm);
+        border: 1px solid var(--gray-200);
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: var(--gray-700);
+        margin-right: var(--space-3);
+        margin-bottom: var(--space-3);
     }
 
     /* ============================================
@@ -173,7 +198,7 @@ st.markdown("""
         font-size: 1.75rem;
         font-weight: 700;
         color: var(--gray-900);
-        margin-top: var(--space-12);
+        margin-top: var(--space-8);
         margin-bottom: var(--space-6);
         padding-bottom: var(--space-4);
         border-bottom: 3px solid var(--primary-600);
@@ -219,7 +244,6 @@ st.markdown("""
         outline: none !important;
     }
 
-    /* Labels de inputs */
     .stTextInput > label,
     .stSelectbox > label,
     .stMultiSelect > label {
@@ -301,21 +325,6 @@ st.markdown("""
         line-height: 1.6;
     }
 
-    .stSuccess {
-        background-color: var(--success-50);
-        border-left-color: var(--success-600);
-    }
-
-    .stWarning {
-        background-color: var(--warning-50);
-        border-left-color: var(--warning-600);
-    }
-
-    .stInfo {
-        background-color: var(--primary-50);
-        border-left-color: var(--primary-600);
-    }
-
     /* ============================================
        MÉTRICAS
        ============================================ */
@@ -372,24 +381,8 @@ st.markdown("""
     }
 
     /* ============================================
-       TRUST ELEMENTS
+       SECURITY NOTICE
        ============================================ */
-    .trust-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: var(--space-2);
-        background: white;
-        padding: var(--space-3) var(--space-5);
-        border-radius: var(--radius-lg);
-        box-shadow: var(--shadow-sm);
-        border: 1px solid var(--gray-200);
-        font-size: 0.875rem;
-        font-weight: 600;
-        color: var(--gray-700);
-        margin-right: var(--space-3);
-        margin-bottom: var(--space-3);
-    }
-
     .security-notice {
         background: linear-gradient(135deg, var(--gray-50) 0%, white 100%);
         border: 2px solid var(--gray-200);
@@ -463,16 +456,30 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Cargar preguntas
+# ============================================================================
+# UTILIDADES
+# ============================================================================
+
+def validate_email(email: str) -> bool:
+    """Validar formato de email"""
+    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    return re.match(pattern, email) is not None
+
+# ============================================================================
+# FUNCIONES DE CARGA
+# ============================================================================
+
 @st.cache_data
 def load_questions():
+    """Cargar preguntas desde JSON"""
     questions_path = Path(__file__).parent.parent / "data" / "questions.json"
     with open(questions_path, 'r', encoding='utf-8') as f:
         return json.load(f)
 
 # ============================================================================
-# CORRECCIÓN CRÍTICA: Inicialización completa de session_state
+# GESTIÓN DE ESTADO
 # ============================================================================
+
 def init_session_state():
     """Inicializar TODAS las variables de session_state"""
 
@@ -480,7 +487,7 @@ def init_session_state():
     if 'step' not in st.session_state:
         st.session_state.step = 0
 
-    # Información de prospecto - valores por defecto vacíos
+    # Información de prospecto
     prospect_defaults = {
         'nombre_empresa': '',
         'sector': '',
@@ -499,7 +506,7 @@ def init_session_state():
 
     # Respuestas del diagnóstico
     diagnostic_defaults = {
-        'Q4': [],      # multiselect
+        'Q4': [],
         'Q5': None,
         'Q6': None,
         'Q7': None,
@@ -508,7 +515,7 @@ def init_session_state():
         'Q10': None,
         'Q11': None,
         'Q12': None,
-        'Q12_otro': '',  # campo condicional
+        'Q12_otro': '',
         'Q13': None,
         'Q14': None,
         'Q15': None
@@ -518,26 +525,34 @@ def init_session_state():
         if key not in st.session_state:
             st.session_state[key] = default
 
-    # Resultado final
+    # Resultado y status de integraciones
     if 'result' not in st.session_state:
         st.session_state.result = None
+    if 'email_sent' not in st.session_state:
+        st.session_state.email_sent = False
+    if 'pdf_generated' not in st.session_state:
+        st.session_state.pdf_generated = False
+
+# ============================================================================
+# COMPONENTES UI
+# ============================================================================
 
 def show_header():
-    """Mostrar header principal"""
-    st.markdown('<div class="main-header">Diagnóstico AI Readiness</div>', unsafe_allow_html=True)
-    st.markdown(
-        '<div class="sub-header">Descubra el potencial de IA en su empresa en solo 10 minutos</div>',
-        unsafe_allow_html=True
-    )
+    """Mostrar header principal con trust badges"""
+    st.markdown('''
+    <div class="main-header">Diagnóstico AI Readiness</div>
+    <div class="sub-header">
+        Descubra el potencial de IA en su empresa en solo 10 minutos
+    </div>
+
+    <div style="margin-bottom: 2rem;">
+        <span class="trust-badge">🔒 100% Confidencial</span>
+        <span class="trust-badge">⚡ Resultados Inmediatos</span>
+        <span class="trust-badge">✅ Sin Compromiso</span>
+    </div>
+    ''', unsafe_allow_html=True)
 
 def show_progress_bar(current_step, total_steps):
-    """Mostrar barra de progreso"""
-    progress = (current_step + 1) / total_steps
-    percentage = int(progress * 100)
-
-    steps = ["Información de Contacto", "Diagnóstico", "Confirmación"]
-
-    def show_progress_bar(current_step, total_steps):
     """Mostrar barra de progreso profesional"""
     progress = (current_step + 1) / total_steps
     percentage = int(progress * 100)
@@ -555,8 +570,24 @@ def show_progress_bar(current_step, total_steps):
 
     st.progress(progress)
 
+def show_security_footer():
+    """Mostrar footer de seguridad"""
+    st.markdown("""
+    <div class="security-notice">
+        🔐 <strong>Sus datos están protegidos</strong><br>
+        La información compartida se maneja con total confidencialidad y no será
+        compartida con terceros. Cumplimos con normativas de protección de datos.
+    </div>
+    """, unsafe_allow_html=True)
+
+# ============================================================================
+# RECOLECCIÓN DE DATOS
+# ============================================================================
+
 def collect_prospect_info():
-    """Recolectar información básica del prospecto"""
+    """Recolectar información básica del prospecto con validación mejorada"""
+
+    st.markdown('<div class="section-card">', unsafe_allow_html=True)
     st.markdown('<div class="section-header">📋 Información de Contacto</div>', unsafe_allow_html=True)
 
     col1, col2 = st.columns(2)
@@ -565,7 +596,8 @@ def collect_prospect_info():
         nombre_empresa = st.text_input(
             "Nombre de la empresa*",
             key="nombre_empresa",
-            placeholder="Ej: Almacenes El Progreso"
+            placeholder="Ej: Almacenes El Progreso",
+            help="Nombre legal o comercial de su organización"
         )
 
         sector = st.selectbox(
@@ -617,7 +649,9 @@ def collect_prospect_info():
             placeholder="Ej: Villavicencio"
         )
 
-    # Validar campos requeridos - usar .strip() para evitar espacios en blanco
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # Validación de campos requeridos
     required_fields = [
         nombre_empresa.strip(),
         sector,
@@ -629,11 +663,35 @@ def collect_prospect_info():
         ciudad.strip()
     ]
 
-    return all(required_fields)
+    all_filled = all(required_fields)
+
+    # Validación de email
+    email_valid = validate_email(contacto_email.strip()) if contacto_email.strip() else False
+
+    # Mostrar errores específicos
+    if not all_filled or not email_valid:
+        st.markdown("""
+        <div style="background: #fef2f2; border-left: 4px solid #dc2626;
+                    padding: 1rem; border-radius: 0.5rem; margin-top: 1rem;">
+            ⚠️ <strong>Atención:</strong>
+        """, unsafe_allow_html=True)
+
+        if not all_filled:
+            st.markdown("Complete todos los campos marcados con *")
+        if not email_valid and contacto_email.strip():
+            st.markdown("El formato del email no es válido")
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    show_security_footer()
+
+    return all_filled and email_valid
 
 def show_diagnostic_questions():
-    """Mostrar preguntas del diagnóstico"""
+    """Mostrar preguntas del diagnóstico con diseño mejorado"""
     questions = load_questions()
+
+    st.markdown('<div class="section-card">', unsafe_allow_html=True)
 
     # Bloque 1: Identificación
     st.markdown('<div class="section-header">🎯 ¿Qué lo motiva?</div>', unsafe_allow_html=True)
@@ -645,7 +703,10 @@ def show_diagnostic_questions():
         key="Q4"
     )
 
+    st.markdown('</div>', unsafe_allow_html=True)
+
     # Bloque 2: Diagnóstico Operativo
+    st.markdown('<div class="section-card">', unsafe_allow_html=True)
     st.markdown('<div class="section-header">🔍 Su Operación Actual</div>', unsafe_allow_html=True)
 
     for pregunta in questions["bloque_2_diagnostico"]["preguntas"]:
@@ -653,7 +714,6 @@ def show_diagnostic_questions():
         helper = pregunta.get("helper", "")
 
         if pregunta.get("tiene_otro"):
-            # Radio con opción "Otro"
             opciones = pregunta["opciones"] + ["Otro"]
             respuesta = st.radio(
                 pregunta["pregunta"],
@@ -675,7 +735,10 @@ def show_diagnostic_questions():
                 help=helper if helper else None
             )
 
+    st.markdown('</div>', unsafe_allow_html=True)
+
     # Bloque 3: Viabilidad Comercial
+    st.markdown('<div class="section-card">', unsafe_allow_html=True)
     st.markdown('<div class="section-header">💼 Viabilidad y Presupuesto</div>', unsafe_allow_html=True)
 
     for pregunta in questions["bloque_3_viabilidad"]["preguntas"]:
@@ -685,20 +748,22 @@ def show_diagnostic_questions():
             key=pregunta["id"]
         )
 
-    # Validar que todas las preguntas estén respondidas
-    # Q4 es multiselect, debe tener al menos 1 elemento
-    q4_valid = len(st.session_state.get("Q4", [])) > 0
+    st.markdown('</div>', unsafe_allow_html=True)
 
-    # Q5-Q15 son radio buttons, deben ser != None
+    # Validación
+    q4_valid = len(st.session_state.get("Q4", [])) > 0
     radio_questions = ["Q5", "Q6", "Q7", "Q8", "Q9", "Q10", "Q11", "Q12", "Q13", "Q14", "Q15"]
     radio_valid = all(st.session_state.get(q) is not None for q in radio_questions)
 
     return q4_valid and radio_valid
 
+# ============================================================================
+# PROCESAMIENTO
+# ============================================================================
+
 def process_diagnostic():
     """Procesar el diagnóstico completo"""
 
-    # Crear objetos de datos
     prospect_info = ProspectInfo(
         nombre_empresa=st.session_state.nombre_empresa,
         sector=st.session_state.sector,
@@ -746,7 +811,7 @@ def process_diagnostic():
     insights = insight_gen.generate_insights(score, responses, arquetipo)
     reunion_prep = insight_gen.generate_reunion_prep(score, responses, arquetipo, prospect_info)
 
-    # Determinar servicio y monto sugerido
+    # Determinar servicio y monto
     if score.tier.value == "A":
         servicio = "Implementación Completa"
         monto_min, monto_max = 25000000, 45000000
@@ -757,8 +822,6 @@ def process_diagnostic():
         servicio = "Workshop Educativo"
         monto_min, monto_max = 0, 5000000
 
-    # Crear resultado completo
-    from core.models import DiagnosticResult
     result = DiagnosticResult(
         prospect_info=prospect_info,
         responses=responses,
@@ -775,26 +838,48 @@ def process_diagnostic():
 
     return result
 
-def show_confirmation_screen(result):
-    """Mostrar pantalla de confirmación al prospecto"""
+# ============================================================================
+# PANTALLA DE CONFIRMACIÓN
+# ============================================================================
 
+def show_confirmation_screen(result):
+    """Mostrar pantalla de confirmación con status real"""
+
+    st.markdown('<div class="section-card">', unsafe_allow_html=True)
     st.markdown("## ✅ ¡Diagnóstico completado!")
 
-    st.success(f"""
-    Gracias **{result.prospect_info.contacto_nombre}** por completar el diagnóstico.
+    email_sent = st.session_state.get("email_sent", False)
+    pdf_generated = st.session_state.get("pdf_generated", False)
 
-    Hemos analizado la información de **{result.prospect_info.nombre_empresa}** y
-    identificamos oportunidades específicas para mejorar su operación con IA.
-    """)
+    # Mensaje adaptativo
+    if email_sent:
+        st.success(f"""
+        Gracias **{result.prospect_info.contacto_nombre}** por completar el diagnóstico.
 
-    st.markdown("### 📊 Resumen preliminar")
+        Hemos analizado la información de **{result.prospect_info.nombre_empresa}** y
+        identificamos oportunidades específicas para mejorar su operación con IA.
+
+        📧 **Confirmación enviada** a {result.prospect_info.contacto_email}
+        """)
+    else:
+        st.warning(f"""
+        Gracias **{result.prospect_info.contacto_nombre}** por completar el diagnóstico.
+
+        ⚠️ El email de confirmación no pudo ser enviado automáticamente.
+        Le contactaremos manualmente en las próximas 24 horas a:
+
+        📧 {result.prospect_info.contacto_email}
+        """)
+
+    st.markdown("### 📊 Resumen de Resultados")
 
     col1, col2, col3 = st.columns(3)
 
     with col1:
         st.metric(
             "Madurez Digital",
-            f"{result.score.madurez_digital.score_total}/40"
+            f"{result.score.madurez_digital.score_total}/40",
+            delta=f"Nivel {result.score.tier.value}"
         )
 
     with col2:
@@ -815,29 +900,41 @@ def show_confirmation_screen(result):
     **Lo contactaremos en las próximas 48 horas** para:
 
     1. Compartir el análisis completo de su diagnóstico
-    2. Mostrarle casos de éxito relevantes para su sector
+    2. Mostrar casos de éxito relevantes para {result.prospect_info.sector}
     3. Presentar una propuesta específica para {result.prospect_info.nombre_empresa}
 
-    Recibirá un email en **{result.prospect_info.contacto_email}** con un resumen
-    de este diagnóstico.
+    **Datos de contacto confirmados:**
+    - Email: {result.prospect_info.contacto_email}
+    - Teléfono: {result.prospect_info.contacto_telefono or 'No proporcionado'}
     """)
 
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # Info técnica
+    if not email_sent or not pdf_generated:
+        with st.expander("ℹ️ Información técnica"):
+            st.write(f"- Diagnóstico guardado: ✅")
+            st.write(f"- Email enviado: {'✅' if email_sent else '❌'}")
+            st.write(f"- PDF generado: {'✅' if pdf_generated else '❌'}")
+            st.write(f"- Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
     if st.button("🔄 Realizar otro diagnóstico"):
-        # Limpiar session state
         for key in list(st.session_state.keys()):
             del st.session_state[key]
         st.rerun()
 
+    show_security_footer()
+
+# ============================================================================
+# FUNCIÓN PRINCIPAL
+# ============================================================================
+
 def main():
     """Función principal de la aplicación"""
 
-    # ============================================================================
-    # CRÍTICO: Inicializar ANTES de cualquier otra operación
-    # ============================================================================
     init_session_state()
     show_header()
 
-    # Determinar qué mostrar según el step
     if st.session_state.step == 0:
         # Paso 1: Información de contacto
         show_progress_bar(0, 2)
@@ -845,9 +942,7 @@ def main():
         if collect_prospect_info():
             if st.button("Continuar al diagnóstico →"):
                 st.session_state.step = 1
-                st.rerun()  # ✅ Correcto: st.rerun() en vez de st.experimental_rerun()
-        else:
-            st.warning("⚠️ Por favor complete todos los campos marcados con *")
+                st.rerun()
 
     elif st.session_state.step == 1:
         # Paso 2: Preguntas de diagnóstico
@@ -856,35 +951,57 @@ def main():
         if show_diagnostic_questions():
             if st.button("Enviar diagnóstico"):
                 with st.spinner("Procesando su diagnóstico..."):
-                    # Procesar diagnóstico
+
+                    # PASO 1: Procesar diagnóstico
                     result = process_diagnostic()
 
-                    # Guardar en Google Sheets
+                    # PASO 2: Guardar en Sheets (CRÍTICO)
+                    save_success = False
                     try:
                         connector = SheetsConnector()
                         connector.save_diagnostic(result)
+                        save_success = True
+                        st.success("✅ Diagnóstico guardado exitosamente")
                     except Exception as e:
-                        st.error(f"Error al guardar: {e}")
+                        st.error(f"❌ Error crítico al guardar diagnóstico: {e}")
+                        st.error("Por favor intente nuevamente o contacte soporte.")
+                        print(f"[ERROR SHEETS] {datetime.now()}: {traceback.format_exc()}")
+                        if st.button("🔄 Reintentar guardado"):
+                            st.rerun()
+                        st.stop()
 
-                    # Generar PDF
-                    try:
-                        pdf_gen = PDFGenerator()
-                        pdf_path = pdf_gen.generate_prospect_pdf(result)
-                    except Exception as e:
-                        st.error(f"Error al generar PDF: {e}")
-                        pdf_path = None
+                    # PASO 3: Generar PDF (best-effort)
+                    pdf_path = None
+                    pdf_success = False
+                    if save_success:
+                        try:
+                            pdf_gen = PDFGenerator()
+                            pdf_path = pdf_gen.generate_prospect_pdf(result)
+                            pdf_success = True
+                            st.success("✅ PDF generado exitosamente")
+                        except Exception as e:
+                            st.warning(f"⚠️ No se pudo generar PDF: {e}")
+                            print(f"[ERROR PDF] {datetime.now()}: {traceback.format_exc()}")
 
-                    # Enviar email
-                    try:
-                        email_sender = EmailSender()
-                        email_sender.send_confirmation_email(result, pdf_path)
-                    except Exception as e:
-                        st.error(f"Error al enviar email: {e}")
+                    # PASO 4: Enviar email (best-effort)
+                    email_success = False
+                    if save_success:
+                        try:
+                            email_sender = EmailSender()
+                            email_sender.send_confirmation_email(result, pdf_path)
+                            email_success = True
+                            st.success(f"✅ Email enviado a {result.prospect_info.contacto_email}")
+                        except Exception as e:
+                            st.warning(f"⚠️ No se pudo enviar email: {e}")
+                            print(f"[ERROR EMAIL] {datetime.now()}: {traceback.format_exc()}")
 
-                    # Guardar resultado en session state
-                    st.session_state.result = result
-                    st.session_state.step = 2
-                    st.rerun()  # ✅ Correcto
+                    # PASO 5: Actualizar estado
+                    if save_success:
+                        st.session_state.result = result
+                        st.session_state.email_sent = email_success
+                        st.session_state.pdf_generated = pdf_success
+                        st.session_state.step = 2
+                        st.rerun()
         else:
             st.warning("⚠️ Por favor responda todas las preguntas para continuar")
 
