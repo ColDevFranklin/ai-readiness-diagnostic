@@ -1,5 +1,6 @@
 """
 Formulario de Diagnóstico AI Readiness - Aplicación Principal
+Version: 2.0 - Error handling robusto + logging
 """
 
 import streamlit as st
@@ -7,12 +8,13 @@ import json
 from datetime import datetime
 from pathlib import Path
 import sys
+import traceback
 
 # Agregar path del proyecto
 sys.path.append(str(Path(__file__).parent.parent))
 
 from app.config import *
-from core.models import ProspectInfo, DiagnosticResponses
+from core.models import ProspectInfo, DiagnosticResponses, DiagnosticResult
 from core.scoring_engine import ScoringEngine
 from core.classifier import ArchetypeClassifier, InsightGenerator
 from integrations.sheets_connector import SheetsConnector
@@ -84,9 +86,6 @@ def load_questions():
     with open(questions_path, 'r', encoding='utf-8') as f:
         return json.load(f)
 
-# ============================================================================
-# CORRECCIÓN CRÍTICA: Inicialización completa de session_state
-# ============================================================================
 def init_session_state():
     """Inicializar TODAS las variables de session_state"""
 
@@ -113,7 +112,7 @@ def init_session_state():
 
     # Respuestas del diagnóstico
     diagnostic_defaults = {
-        'Q4': [],      # multiselect
+        'Q4': [],
         'Q5': None,
         'Q6': None,
         'Q7': None,
@@ -122,7 +121,7 @@ def init_session_state():
         'Q10': None,
         'Q11': None,
         'Q12': None,
-        'Q12_otro': '',  # campo condicional
+        'Q12_otro': '',
         'Q13': None,
         'Q14': None,
         'Q15': None
@@ -135,6 +134,12 @@ def init_session_state():
     # Resultado final
     if 'result' not in st.session_state:
         st.session_state.result = None
+
+    # Status de integraciones
+    if 'email_sent' not in st.session_state:
+        st.session_state.email_sent = False
+    if 'pdf_generated' not in st.session_state:
+        st.session_state.pdf_generated = False
 
 def show_header():
     """Mostrar header principal"""
@@ -215,7 +220,7 @@ def collect_prospect_info():
             placeholder="Ej: Villavicencio"
         )
 
-    # Validar campos requeridos - usar .strip() para evitar espacios en blanco
+    # Validar campos requeridos
     required_fields = [
         nombre_empresa.strip(),
         sector,
@@ -251,7 +256,6 @@ def show_diagnostic_questions():
         helper = pregunta.get("helper", "")
 
         if pregunta.get("tiene_otro"):
-            # Radio con opción "Otro"
             opciones = pregunta["opciones"] + ["Otro"]
             respuesta = st.radio(
                 pregunta["pregunta"],
@@ -284,10 +288,7 @@ def show_diagnostic_questions():
         )
 
     # Validar que todas las preguntas estén respondidas
-    # Q4 es multiselect, debe tener al menos 1 elemento
     q4_valid = len(st.session_state.get("Q4", [])) > 0
-
-    # Q5-Q15 son radio buttons, deben ser != None
     radio_questions = ["Q5", "Q6", "Q7", "Q8", "Q9", "Q10", "Q11", "Q12", "Q13", "Q14", "Q15"]
     radio_valid = all(st.session_state.get(q) is not None for q in radio_questions)
 
@@ -296,7 +297,6 @@ def show_diagnostic_questions():
 def process_diagnostic():
     """Procesar el diagnóstico completo"""
 
-    # Crear objetos de datos
     prospect_info = ProspectInfo(
         nombre_empresa=st.session_state.nombre_empresa,
         sector=st.session_state.sector,
@@ -355,8 +355,6 @@ def process_diagnostic():
         servicio = "Workshop Educativo"
         monto_min, monto_max = 0, 5000000
 
-    # Crear resultado completo
-    from core.models import DiagnosticResult
     result = DiagnosticResult(
         prospect_info=prospect_info,
         responses=responses,
@@ -374,16 +372,32 @@ def process_diagnostic():
     return result
 
 def show_confirmation_screen(result):
-    """Mostrar pantalla de confirmación al prospecto"""
+    """Mostrar pantalla de confirmación con status real de integraciones"""
 
     st.markdown("## ✅ ¡Diagnóstico completado!")
 
-    st.success(f"""
-    Gracias **{result.prospect_info.contacto_nombre}** por completar el diagnóstico.
+    email_sent = st.session_state.get("email_sent", False)
+    pdf_generated = st.session_state.get("pdf_generated", False)
 
-    Hemos analizado la información de **{result.prospect_info.nombre_empresa}** y
-    identificamos oportunidades específicas para mejorar su operación con IA.
-    """)
+    # Mensaje principal adaptativo
+    if email_sent:
+        st.success(f"""
+        Gracias **{result.prospect_info.contacto_nombre}** por completar el diagnóstico.
+
+        Hemos analizado la información de **{result.prospect_info.nombre_empresa}** y
+        identificamos oportunidades específicas para mejorar su operación con IA.
+
+        📧 **Confirmación enviada** a {result.prospect_info.contacto_email}
+        """)
+    else:
+        st.warning(f"""
+        Gracias **{result.prospect_info.contacto_nombre}** por completar el diagnóstico.
+
+        ⚠️ El email de confirmación no pudo ser enviado automáticamente.
+        Le contactaremos manualmente en las próximas 24 horas a:
+
+        📧 {result.prospect_info.contacto_email}
+        """)
 
     st.markdown("### 📊 Resumen preliminar")
 
@@ -413,15 +427,23 @@ def show_confirmation_screen(result):
     **Lo contactaremos en las próximas 48 horas** para:
 
     1. Compartir el análisis completo de su diagnóstico
-    2. Mostrarle casos de éxito relevantes para su sector
+    2. Mostrar casos de éxito relevantes para {result.prospect_info.sector}
     3. Presentar una propuesta específica para {result.prospect_info.nombre_empresa}
 
-    Recibirá un email en **{result.prospect_info.contacto_email}** con un resumen
-    de este diagnóstico.
+    **Datos de contacto confirmados:**
+    - Email: {result.prospect_info.contacto_email}
+    - Teléfono: {result.prospect_info.contacto_telefono or 'No proporcionado'}
     """)
 
+    # Info técnica para debugging
+    if not email_sent or not pdf_generated:
+        with st.expander("ℹ️ Información técnica"):
+            st.write(f"- Diagnóstico guardado: ✅")
+            st.write(f"- Email enviado: {'✅' if email_sent else '❌'}")
+            st.write(f"- PDF generado: {'✅' if pdf_generated else '❌'}")
+            st.write(f"- Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
     if st.button("🔄 Realizar otro diagnóstico"):
-        # Limpiar session state
         for key in list(st.session_state.keys()):
             del st.session_state[key]
         st.rerun()
@@ -429,13 +451,9 @@ def show_confirmation_screen(result):
 def main():
     """Función principal de la aplicación"""
 
-    # ============================================================================
-    # CRÍTICO: Inicializar ANTES de cualquier otra operación
-    # ============================================================================
     init_session_state()
     show_header()
 
-    # Determinar qué mostrar según el step
     if st.session_state.step == 0:
         # Paso 1: Información de contacto
         show_progress_bar(0, 2)
@@ -443,7 +461,7 @@ def main():
         if collect_prospect_info():
             if st.button("Continuar al diagnóstico →"):
                 st.session_state.step = 1
-                st.rerun()  # ✅ Correcto: st.rerun() en vez de st.experimental_rerun()
+                st.rerun()
         else:
             st.warning("⚠️ Por favor complete todos los campos marcados con *")
 
@@ -454,35 +472,69 @@ def main():
         if show_diagnostic_questions():
             if st.button("Enviar diagnóstico"):
                 with st.spinner("Procesando su diagnóstico..."):
-                    # Procesar diagnóstico
+
+                    # PASO 1: Procesar diagnóstico
                     result = process_diagnostic()
 
-                    # Guardar en Google Sheets
+                    # PASO 2: Guardar en Sheets (CRÍTICO)
+                    save_success = False
+
                     try:
                         connector = SheetsConnector()
                         connector.save_diagnostic(result)
-                    except Exception as e:
-                        st.error(f"Error al guardar: {e}")
+                        save_success = True
+                        st.success("✅ Diagnóstico guardado exitosamente")
 
-                    # Generar PDF
-                    try:
-                        pdf_gen = PDFGenerator()
-                        pdf_path = pdf_gen.generate_prospect_pdf(result)
                     except Exception as e:
-                        st.error(f"Error al generar PDF: {e}")
-                        pdf_path = None
+                        st.error(f"❌ Error crítico al guardar diagnóstico: {e}")
+                        st.error("Por favor intente nuevamente o contacte soporte.")
+                        print(f"[ERROR SHEETS] {datetime.now()}: {traceback.format_exc()}")
 
-                    # Enviar email
-                    try:
-                        email_sender = EmailSender()
-                        email_sender.send_confirmation_email(result, pdf_path)
-                    except Exception as e:
-                        st.error(f"Error al enviar email: {e}")
+                        if st.button("🔄 Reintentar guardado"):
+                            st.rerun()
+                        st.stop()
 
-                    # Guardar resultado en session state
-                    st.session_state.result = result
-                    st.session_state.step = 2
-                    st.rerun()  # ✅ Correcto
+                    # PASO 3: Generar PDF (best-effort)
+                    pdf_path = None
+                    pdf_success = False
+
+                    if save_success:
+                        try:
+                            pdf_gen = PDFGenerator()
+                            pdf_path = pdf_gen.generate_prospect_pdf(result)
+                            pdf_success = True
+                            st.success("✅ PDF generado exitosamente")
+
+                        except Exception as e:
+                            st.warning(f"⚠️ No se pudo generar PDF: {e}")
+                            st.info("El diagnóstico fue guardado, pero el PDF no está disponible.")
+                            print(f"[ERROR PDF] {datetime.now()}: {traceback.format_exc()}")
+
+                    # PASO 4: Enviar email (best-effort)
+                    email_success = False
+
+                    if save_success:
+                        try:
+                            email_sender = EmailSender()
+                            email_sender.send_confirmation_email(result, pdf_path)
+                            email_success = True
+                            st.success(f"✅ Email enviado a {result.prospect_info.contacto_email}")
+
+                        except Exception as e:
+                            st.warning(f"⚠️ No se pudo enviar email: {e}")
+                            st.info(
+                                f"El diagnóstico fue guardado correctamente. "
+                                f"Le contactaremos manualmente a {result.prospect_info.contacto_email}"
+                            )
+                            print(f"[ERROR EMAIL] {datetime.now()}: {traceback.format_exc()}")
+
+                    # PASO 5: Actualizar estado
+                    if save_success:
+                        st.session_state.result = result
+                        st.session_state.email_sent = email_success
+                        st.session_state.pdf_generated = pdf_success
+                        st.session_state.step = 2
+                        st.rerun()
         else:
             st.warning("⚠️ Por favor responda todas las preguntas para continuar")
 
