@@ -1,257 +1,177 @@
 """
-Conector de Google Sheets para almacenar resultados de diagnósticos
-Version: 2.0 - Fixed critical field persistence
+Generador de PDFs para prospectos
+Version: 2.0 - Fixed output path for Streamlit Cloud
 """
 
-import gspread
-from google.oauth2.service_account import Credentials
+from reportlab.lib.pagesizes import letter
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
+from reportlab.lib.units import inch
 from datetime import datetime
-from typing import Dict, List, Optional
-import streamlit as st
-import pandas as pd
-import traceback
+from pathlib import Path
+import tempfile
 
 from core.models import DiagnosticResult
 
 
-class SheetsConnector:
-    """Conector para Google Sheets con persistencia completa de datos"""
+class PDFGenerator:
+    """Generador de PDFs ejecutivos para prospectos"""
 
     def __init__(self):
-        """Inicializar conexión con Google Sheets"""
-        try:
-            creds_dict = st.secrets["gcp_service_account"]
+        self.output_dir = Path(tempfile.gettempdir()) / "ai_diagnostics"
+        self.output_dir.mkdir(parents=True, exist_ok=True)
 
-            scopes = [
-                'https://www.googleapis.com/auth/spreadsheets',
-                'https://www.googleapis.com/auth/drive'
+        self.styles = getSampleStyleSheet()
+        self.title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=self.styles['Heading1'],
+            fontSize=24,
+            textColor=colors.HexColor('#1f2937'),
+            spaceAfter=12
+        )
+        self.heading_style = ParagraphStyle(
+            'CustomHeading',
+            parent=self.styles['Heading2'],
+            fontSize=16,
+            textColor=colors.HexColor('#374151'),
+            spaceAfter=10
+        )
+
+    def generate_prospect_pdf(self, result: DiagnosticResult) -> Path:
+        """Generar PDF de 2 páginas para el prospecto"""
+
+        filename = f"diagnostico_{result.diagnostic_id}.pdf"
+        filepath = self.output_dir / filename
+
+        doc = SimpleDocTemplate(str(filepath), pagesize=letter)
+        story = []
+
+        story.append(Paragraph("Diagnóstico AI Readiness", self.title_style))
+        story.append(Paragraph(f"{result.prospect_info.nombre_empresa}", self.styles['Heading2']))
+        story.append(Spacer(1, 0.3*inch))
+
+        story.append(Paragraph("Su Situación Actual", self.heading_style))
+
+        scores_data = [
+            ['Dimensión', 'Score', 'Evaluación'],
+            [
+                'Madurez Digital',
+                f"{result.score.madurez_digital.score_total}/40",
+                self._get_evaluation(result.score.madurez_digital.score_total, 40)
+            ],
+            [
+                'Capacidad de Inversión',
+                f"{result.score.capacidad_inversion.score_total}/30",
+                self._get_evaluation(result.score.capacidad_inversion.score_total, 30)
+            ],
+            [
+                'Viabilidad Comercial',
+                f"{result.score.viabilidad_comercial.score_total}/30",
+                self._get_evaluation(result.score.viabilidad_comercial.score_total, 30)
             ]
-
-            creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-            self.client = gspread.authorize(creds)
-
-            self.sheet_name = st.secrets.get("sheet_name", "AI_Readiness_Diagnostics")
-            self.spreadsheet = self.client.open(self.sheet_name)
-
-        except Exception as e:
-            print(f"[SHEETS INIT ERROR] {datetime.now()}: {str(e)}")
-            print(traceback.format_exc())
-            raise
-
-    def _get_or_create_worksheet(self, worksheet_name: str) -> gspread.Worksheet:
-        """Obtener o crear una worksheet"""
-        try:
-            worksheet = self.spreadsheet.worksheet(worksheet_name)
-        except gspread.WorksheetNotFound:
-            worksheet = self.spreadsheet.add_worksheet(
-                title=worksheet_name,
-                rows=1000,
-                cols=50
-            )
-        return worksheet
-
-    def save_diagnostic(self, result: DiagnosticResult) -> bool:
-        """
-        Guardar resultado completo del diagnóstico
-        """
-        try:
-            self._save_to_responses(result)
-            self._save_to_scores(result)
-            self._update_analytics()
-
-            print(f"[SHEETS SAVE SUCCESS] {datetime.now()}: {result.prospect_info.nombre_empresa}")
-            return True
-
-        except Exception as e:
-            print(f"[SHEETS SAVE ERROR] {datetime.now()}: {str(e)}")
-            print(f"  Empresa: {result.prospect_info.nombre_empresa}")
-            print(f"  Email: {result.prospect_info.contacto_email}")
-            print(f"  Score: {result.score.score_final}")
-            print(traceback.format_exc())
-            raise
-
-    def _save_to_responses(self, result: DiagnosticResult):
-        """Guardar respuestas raw del prospecto"""
-        worksheet = self._get_or_create_worksheet("responses")
-
-        if worksheet.row_count == 1 or not worksheet.row_values(1):
-            headers = [
-                "timestamp", "diagnostic_id", "nombre_empresa", "sector",
-                "facturacion", "empleados", "contacto_nombre", "contacto_email",
-                "contacto_telefono", "cargo", "ciudad",
-                "motivacion", "toma_decisiones", "procesos_criticos",
-                "tareas_repetitivas", "compartir_informacion", "equipo_tecnico",
-                "capacidad_implementacion", "inversion_reciente", "frustracion_principal",
-                "urgencia", "proceso_aprobacion", "presupuesto_rango"
-            ]
-            worksheet.append_row(headers)
-
-        row = [
-            result.created_at.strftime("%Y-%m-%d %H:%M:%S"),
-            result.diagnostic_id,
-            result.prospect_info.nombre_empresa,
-            result.prospect_info.sector,
-            result.prospect_info.facturacion_rango,
-            result.prospect_info.empleados_rango,
-            result.prospect_info.contacto_nombre,
-            result.prospect_info.contacto_email,
-            result.prospect_info.contacto_telefono,
-            result.prospect_info.cargo,
-            result.prospect_info.ciudad,
-            ", ".join(result.responses.motivacion),
-            result.responses.toma_decisiones,
-            result.responses.procesos_criticos,
-            result.responses.tareas_repetitivas,
-            result.responses.compartir_informacion,
-            result.responses.equipo_tecnico,
-            result.responses.capacidad_implementacion,
-            result.responses.inversion_reciente,
-            result.responses.frustracion_principal,
-            result.responses.urgencia,
-            result.responses.proceso_aprobacion,
-            result.responses.presupuesto_rango
         ]
 
-        worksheet.append_row(row, value_input_option='USER_ENTERED')
+        score_table = Table(scores_data, colWidths=[2.5*inch, 1.5*inch, 2*inch])
+        score_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e5e7eb')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#1f2937')),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 12),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('GRID', (0, 0), (-1, -1), 1, colors.grey),
+        ]))
 
-    def _save_to_scores(self, result: DiagnosticResult):
-        """Guardar scores y clasificación - FIXED VERSION"""
-        worksheet = self._get_or_create_worksheet("scores")
+        story.append(score_table)
+        story.append(Spacer(1, 0.3*inch))
 
-        if worksheet.row_count == 1 or not worksheet.row_values(1):
-            headers = [
-                "timestamp", "diagnostic_id", "nombre_empresa", "sector",
-                "contacto_nombre", "contacto_email", "contacto_telefono",
-                "cargo", "ciudad", "facturacion", "empleados",
-                "score_final", "tier", "confianza_clasificacion",
-                "madurez_digital_total", "madurez_decisiones", "madurez_procesos",
-                "madurez_integracion", "madurez_eficiencia",
-                "capacidad_inversion_total", "capacidad_presupuesto",
-                "capacidad_historial", "capacidad_tamano",
-                "viabilidad_total", "viabilidad_problema", "viabilidad_urgencia",
-                "viabilidad_decision",
-                "arquetipo_tipo", "arquetipo_nombre", "arquetipo_confianza",
-                "servicio_sugerido", "monto_min", "monto_max",
-                "probabilidad_cierre", "quick_wins_count", "red_flags_count"
-            ]
-            worksheet.append_row(headers)
+        story.append(Paragraph("Fortalezas Identificadas", self.heading_style))
 
-        row = [
-            result.created_at.strftime("%Y-%m-%d %H:%M:%S"),
-            result.diagnostic_id,
-            result.prospect_info.nombre_empresa,
-            result.prospect_info.sector,
-            result.prospect_info.contacto_nombre,
-            result.prospect_info.contacto_email,
-            result.prospect_info.contacto_telefono,
-            result.prospect_info.cargo,
-            result.prospect_info.ciudad,
-            result.prospect_info.facturacion_rango,
-            result.prospect_info.empleados_rango,
-            result.score.score_final,
-            result.score.tier.value,
-            result.score.confianza_clasificacion,
-            result.score.madurez_digital.score_total,
-            result.score.madurez_digital.decisiones_basadas_datos,
-            result.score.madurez_digital.procesos_estandarizados,
-            result.score.madurez_digital.sistemas_integrados,
-            result.score.madurez_digital.eficiencia_operativa,
-            result.score.capacidad_inversion.score_total,
-            result.score.capacidad_inversion.presupuesto_disponible,
-            result.score.capacidad_inversion.historial_inversion,
-            result.score.capacidad_inversion.tamano_empresa,
-            result.score.viabilidad_comercial.score_total,
-            result.score.viabilidad_comercial.problema_claro,
-            result.score.viabilidad_comercial.urgencia_real,
-            result.score.viabilidad_comercial.poder_decision,
-            result.arquetipo.tipo,
-            result.arquetipo.nombre,
-            result.arquetipo.confianza,
-            result.servicio_sugerido,
-            result.monto_sugerido_min,
-            result.monto_sugerido_max,
-            result.reunion_prep.probabilidad_cierre,
-            len(result.quick_wins),
-            len(result.red_flags)
-        ]
+        fortalezas_text = "<br/>".join([
+            f"• {insight.descripcion}"
+            for insight in result.insights
+            if insight.categoria == "fortaleza"
+        ])
 
-        worksheet.append_row(row, value_input_option='USER_ENTERED')
+        if fortalezas_text:
+            story.append(Paragraph(fortalezas_text, self.styles['BodyText']))
+        else:
+            story.append(Paragraph("• Análisis en curso", self.styles['BodyText']))
 
-    def _update_analytics(self):
-        """Actualizar métricas agregadas"""
-        try:
-            scores_ws = self._get_or_create_worksheet("scores")
-            scores_data = scores_ws.get_all_records()
+        story.append(Spacer(1, 0.2*inch))
 
-            if not scores_data:
-                return
+        story.append(Paragraph("Oportunidades de Mejora", self.heading_style))
 
-            df = pd.DataFrame(scores_data)
+        oportunidades_text = "<br/>".join([
+            f"• {insight.descripcion}"
+            for insight in result.insights
+            if insight.categoria == "oportunidad"
+        ][:3])
 
-            total_diagnosticos = len(df)
-            tier_a_count = len(df[df['tier'] == 'A'])
-            tier_b_count = len(df[df['tier'] == 'B'])
-            tier_c_count = len(df[df['tier'] == 'C'])
+        if oportunidades_text:
+            story.append(Paragraph(oportunidades_text, self.styles['BodyText']))
+        else:
+            story.append(Paragraph("• Múltiples oportunidades identificadas", self.styles['BodyText']))
 
-            score_promedio = df['score_final'].mean() if 'score_final' in df.columns else 0
-            prob_cierre_promedio = df['probabilidad_cierre'].mean() if 'probabilidad_cierre' in df.columns else 0
+        story.append(PageBreak())
 
-            df['pipeline_value'] = (df['monto_min'] + df['monto_max']) / 2 * (df['probabilidad_cierre'] / 100)
-            pipeline_total = df['pipeline_value'].sum()
+        story.append(Paragraph("Próximos Pasos Sugeridos", self.title_style))
+        story.append(Spacer(1, 0.2*inch))
 
-            analytics_ws = self._get_or_create_worksheet("analytics")
+        story.append(Paragraph("Quick Wins (3-6 meses)", self.heading_style))
 
-            analytics_data = [
-                ["Métrica", "Valor", "Última Actualización"],
-                ["Total Diagnósticos", total_diagnosticos, datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
-                ["Tier A", tier_a_count, ""],
-                ["Tier B", tier_b_count, ""],
-                ["Tier C", tier_c_count, ""],
-                ["Score Promedio", f"{score_promedio:.1f}", ""],
-                ["Prob. Cierre Promedio", f"{prob_cierre_promedio:.1f}%", ""],
-                ["Pipeline Value Estimado", f"${pipeline_total:,.0f} COP", ""],
-                ["Conversion Rate (Tier A)", f"{tier_a_count/total_diagnosticos*100:.1f}%" if total_diagnosticos > 0 else "0%", ""]
-            ]
+        for qw in result.quick_wins[:2]:
+            qw_text = f"""
+            <b>{qw.titulo}</b><br/>
+            {qw.descripcion}<br/>
+            <i>Impacto estimado: {qw.impacto_estimado}</i>
+            """
+            story.append(Paragraph(qw_text, self.styles['BodyText']))
+            story.append(Spacer(1, 0.15*inch))
 
-            analytics_ws.clear()
-            analytics_ws.update('A1', analytics_data)
+        story.append(Spacer(1, 0.2*inch))
 
-        except Exception as e:
-            print(f"[ANALYTICS UPDATE ERROR] {datetime.now()}: {str(e)}")
+        story.append(Paragraph("Resultados Esperados", self.heading_style))
 
-    def get_all_diagnostics(self, limit: Optional[int] = None) -> List[Dict]:
-        """Obtener todos los diagnósticos"""
-        try:
-            scores_ws = self._get_or_create_worksheet("scores")
-            data = scores_ws.get_all_records()
-            data = sorted(data, key=lambda x: x.get('timestamp', ''), reverse=True)
+        resultados_text = f"""
+        Empresas del sector {result.prospect_info.sector} que implementaron
+        iniciativas de IA lograron:<br/>
+        • Reducción 20-40% en costos operativos<br/>
+        • Mejora 30-50% en tiempos de respuesta<br/>
+        • Incremento 15-25% en satisfacción del cliente<br/>
+        • ROI positivo en 6-12 meses
+        """
 
-            if limit:
-                data = data[:limit]
+        story.append(Paragraph(resultados_text, self.styles['BodyText']))
+        story.append(Spacer(1, 0.3*inch))
 
-            return data
+        story.append(Paragraph("¿Qué sigue?", self.heading_style))
 
-        except Exception as e:
-            print(f"[GET DIAGNOSTICS ERROR] {datetime.now()}: {str(e)}")
-            return []
+        next_steps_text = f"""
+        Lo contactaremos en las próximas 48 horas para:<br/><br/>
+        1. Presentarle casos de éxito relevantes para su sector<br/>
+        2. Mostrarle el ROI estimado para {result.prospect_info.nombre_empresa}<br/>
+        3. Diseñar un plan de implementación específico<br/>
+        4. Responder todas sus preguntas<br/><br/>
 
-    def get_tier_a_diagnostics(self) -> List[Dict]:
-        """Obtener solo diagnósticos Tier A"""
-        all_data = self.get_all_diagnostics()
-        return [d for d in all_data if d.get('tier') == 'A']
+        <b>Contacto:</b> Andrés - AI Consulting<br/>
+        <b>Email:</b> negusnett@gmail.com
+        """
 
-    def get_analytics_summary(self) -> Dict:
-        """Obtener resumen de analytics"""
-        try:
-            analytics_ws = self._get_or_create_worksheet("analytics")
-            data = analytics_ws.get_all_records()
+        story.append(Paragraph(next_steps_text, self.styles['BodyText']))
 
-            summary = {}
-            for row in data:
-                summary[row.get('Métrica', '')] = row.get('Valor', '')
+        doc.build(story)
 
-            return summary
+        return filepath
 
-        except Exception as e:
-            print(f"[GET ANALYTICS ERROR] {datetime.now()}: {str(e)}")
-            return {}
+    def _get_evaluation(self, score: int, max_score: int) -> str:
+        """Evaluar un score como Alto/Medio/Bajo"""
+        percentage = (score / max_score) * 100
+
+        if percentage >= 75:
+            return "Alto"
+        elif percentage >= 50:
+            return "Medio"
+        else:
+            return "Bajo"
