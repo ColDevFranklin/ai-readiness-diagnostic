@@ -1,43 +1,41 @@
 """
 Conector de Google Sheets para almacenar resultados de diagnósticos
+Version: 2.0 - Fixed critical field persistence
 """
 
 import gspread
-from oauth2client.service_account import ServiceAccountCredentials
+from google.oauth2.service_account import Credentials
 from datetime import datetime
 from typing import Dict, List, Optional
 import streamlit as st
 import pandas as pd
-from pathlib import Path
-import json
+import traceback
 
 from core.models import DiagnosticResult
 
 
 class SheetsConnector:
-    """Conector para Google Sheets"""
+    """Conector para Google Sheets con persistencia completa de datos"""
 
     def __init__(self):
         """Inicializar conexión con Google Sheets"""
-        self.scope = [
-            'https://spreadsheets.google.com/feeds',
-            'https://www.googleapis.com/auth/drive'
-        ]
-
-        # Cargar credenciales desde Streamlit secrets
         try:
             creds_dict = st.secrets["gcp_service_account"]
-            self.creds = ServiceAccountCredentials.from_json_keyfile_dict(
-                creds_dict, self.scope
-            )
-            self.client = gspread.authorize(self.creds)
 
-            # Abrir spreadsheet
+            scopes = [
+                'https://www.googleapis.com/auth/spreadsheets',
+                'https://www.googleapis.com/auth/drive'
+            ]
+
+            creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+            self.client = gspread.authorize(creds)
+
             self.sheet_name = st.secrets.get("sheet_name", "AI_Readiness_Diagnostics")
             self.spreadsheet = self.client.open(self.sheet_name)
 
         except Exception as e:
-            st.error(f"Error conectando a Google Sheets: {e}")
+            print(f"[SHEETS INIT ERROR] {datetime.now()}: {str(e)}")
+            print(traceback.format_exc())
             raise
 
     def _get_or_create_worksheet(self, worksheet_name: str) -> gspread.Worksheet:
@@ -55,35 +53,27 @@ class SheetsConnector:
     def save_diagnostic(self, result: DiagnosticResult) -> bool:
         """
         Guardar resultado completo del diagnóstico
-
-        Args:
-            result: DiagnosticResult completo
-
-        Returns:
-            bool: True si se guardó exitosamente
         """
         try:
-            # 1. Guardar en hoja "responses" (datos raw)
             self._save_to_responses(result)
-
-            # 2. Guardar en hoja "scores" (resultados calculados)
             self._save_to_scores(result)
-
-            # 3. Actualizar hoja "analytics" (métricas agregadas)
             self._update_analytics()
 
+            print(f"[SHEETS SAVE SUCCESS] {datetime.now()}: {result.prospect_info.nombre_empresa}")
             return True
 
         except Exception as e:
-            st.error(f"Error guardando diagnóstico: {e}")
-            return False
+            print(f"[SHEETS SAVE ERROR] {datetime.now()}: {str(e)}")
+            print(f"  Empresa: {result.prospect_info.nombre_empresa}")
+            print(f"  Email: {result.prospect_info.contacto_email}")
+            print(f"  Score: {result.score.score_final}")
+            print(traceback.format_exc())
+            raise
 
     def _save_to_responses(self, result: DiagnosticResult):
         """Guardar respuestas raw del prospecto"""
-
         worksheet = self._get_or_create_worksheet("responses")
 
-        # Si es la primera fila, agregar headers
         if worksheet.row_count == 1 or not worksheet.row_values(1):
             headers = [
                 "timestamp", "diagnostic_id", "nombre_empresa", "sector",
@@ -96,7 +86,6 @@ class SheetsConnector:
             ]
             worksheet.append_row(headers)
 
-        # Preparar fila de datos
         row = [
             result.created_at.strftime("%Y-%m-%d %H:%M:%S"),
             result.diagnostic_id,
@@ -123,17 +112,17 @@ class SheetsConnector:
             result.responses.presupuesto_rango
         ]
 
-        worksheet.append_row(row)
+        worksheet.append_row(row, value_input_option='USER_ENTERED')
 
     def _save_to_scores(self, result: DiagnosticResult):
-        """Guardar scores y clasificación"""
-
+        """Guardar scores y clasificación - FIXED VERSION"""
         worksheet = self._get_or_create_worksheet("scores")
 
-        # Headers
         if worksheet.row_count == 1 or not worksheet.row_values(1):
             headers = [
-                "timestamp", "diagnostic_id", "nombre_empresa", "contacto_email",
+                "timestamp", "diagnostic_id", "nombre_empresa", "sector",
+                "contacto_nombre", "contacto_email", "contacto_telefono",
+                "cargo", "ciudad", "facturacion", "empleados",
                 "score_final", "tier", "confianza_clasificacion",
                 "madurez_digital_total", "madurez_decisiones", "madurez_procesos",
                 "madurez_integracion", "madurez_eficiencia",
@@ -147,12 +136,18 @@ class SheetsConnector:
             ]
             worksheet.append_row(headers)
 
-        # Preparar datos
         row = [
             result.created_at.strftime("%Y-%m-%d %H:%M:%S"),
             result.diagnostic_id,
             result.prospect_info.nombre_empresa,
+            result.prospect_info.sector,
+            result.prospect_info.contacto_nombre,
             result.prospect_info.contacto_email,
+            result.prospect_info.contacto_telefono,
+            result.prospect_info.cargo,
+            result.prospect_info.ciudad,
+            result.prospect_info.facturacion_rango,
+            result.prospect_info.empleados_rango,
             result.score.score_final,
             result.score.tier.value,
             result.score.confianza_clasificacion,
@@ -180,72 +175,55 @@ class SheetsConnector:
             len(result.red_flags)
         ]
 
-        worksheet.append_row(row)
+        worksheet.append_row(row, value_input_option='USER_ENTERED')
 
     def _update_analytics(self):
         """Actualizar métricas agregadas"""
+        try:
+            scores_ws = self._get_or_create_worksheet("scores")
+            scores_data = scores_ws.get_all_records()
 
-        # Leer datos de scores
-        scores_ws = self._get_or_create_worksheet("scores")
-        scores_data = scores_ws.get_all_records()
+            if not scores_data:
+                return
 
-        if not scores_data:
-            return
+            df = pd.DataFrame(scores_data)
 
-        df = pd.DataFrame(scores_data)
+            total_diagnosticos = len(df)
+            tier_a_count = len(df[df['tier'] == 'A'])
+            tier_b_count = len(df[df['tier'] == 'B'])
+            tier_c_count = len(df[df['tier'] == 'C'])
 
-        # Calcular métricas
-        total_diagnosticos = len(df)
-        tier_a_count = len(df[df['tier'] == 'A'])
-        tier_b_count = len(df[df['tier'] == 'B'])
-        tier_c_count = len(df[df['tier'] == 'C'])
+            score_promedio = df['score_final'].mean() if 'score_final' in df.columns else 0
+            prob_cierre_promedio = df['probabilidad_cierre'].mean() if 'probabilidad_cierre' in df.columns else 0
 
-        score_promedio = df['score_final'].mean()
-        prob_cierre_promedio = df['probabilidad_cierre'].mean()
+            df['pipeline_value'] = (df['monto_min'] + df['monto_max']) / 2 * (df['probabilidad_cierre'] / 100)
+            pipeline_total = df['pipeline_value'].sum()
 
-        # Pipeline value (suma de montos promedio ponderados por probabilidad)
-        df['pipeline_value'] = (df['monto_min'] + df['monto_max']) / 2 * (df['probabilidad_cierre'] / 100)
-        pipeline_total = df['pipeline_value'].sum()
+            analytics_ws = self._get_or_create_worksheet("analytics")
 
-        # Distribución por arquetipo
-        arquetipo_dist = df['arquetipo_tipo'].value_counts().to_dict()
-        sector_dist = df['nombre_empresa'].apply(lambda x: x.split()[0] if x else 'Unknown').value_counts().head(5).to_dict()
+            analytics_data = [
+                ["Métrica", "Valor", "Última Actualización"],
+                ["Total Diagnósticos", total_diagnosticos, datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
+                ["Tier A", tier_a_count, ""],
+                ["Tier B", tier_b_count, ""],
+                ["Tier C", tier_c_count, ""],
+                ["Score Promedio", f"{score_promedio:.1f}", ""],
+                ["Prob. Cierre Promedio", f"{prob_cierre_promedio:.1f}%", ""],
+                ["Pipeline Value Estimado", f"${pipeline_total:,.0f} COP", ""],
+                ["Conversion Rate (Tier A)", f"{tier_a_count/total_diagnosticos*100:.1f}%" if total_diagnosticos > 0 else "0%", ""]
+            ]
 
-        # Guardar en worksheet analytics
-        analytics_ws = self._get_or_create_worksheet("analytics")
+            analytics_ws.clear()
+            analytics_ws.update('A1', analytics_data)
 
-        # Actualizar métricas (siempre en primera fila después del header)
-        analytics_data = [
-            ["Métrica", "Valor", "Última Actualización"],
-            ["Total Diagnósticos", total_diagnosticos, datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
-            ["Tier A", tier_a_count, ""],
-            ["Tier B", tier_b_count, ""],
-            ["Tier C", tier_c_count, ""],
-            ["Score Promedio", f"{score_promedio:.1f}", ""],
-            ["Prob. Cierre Promedio", f"{prob_cierre_promedio:.1f}%", ""],
-            ["Pipeline Value Estimado", f"${pipeline_total:,.0f} COP", ""],
-            ["Conversion Rate (Tier A)", f"{tier_a_count/total_diagnosticos*100:.1f}%", ""]
-        ]
-
-        # Limpiar y escribir
-        analytics_ws.clear()
-        analytics_ws.update('A1', analytics_data)
+        except Exception as e:
+            print(f"[ANALYTICS UPDATE ERROR] {datetime.now()}: {str(e)}")
 
     def get_all_diagnostics(self, limit: Optional[int] = None) -> List[Dict]:
-        """
-        Obtener todos los diagnósticos (o los últimos N)
-
-        Args:
-            limit: Número máximo de registros a retornar
-
-        Returns:
-            Lista de diccionarios con datos de diagnósticos
-        """
+        """Obtener todos los diagnósticos"""
         try:
             scores_ws = self._get_or_create_worksheet("scores")
             data = scores_ws.get_all_records()
-
-            # Ordenar por timestamp descendente
             data = sorted(data, key=lambda x: x.get('timestamp', ''), reverse=True)
 
             if limit:
@@ -254,7 +232,7 @@ class SheetsConnector:
             return data
 
         except Exception as e:
-            st.error(f"Error obteniendo diagnósticos: {e}")
+            print(f"[GET DIAGNOSTICS ERROR] {datetime.now()}: {str(e)}")
             return []
 
     def get_tier_a_diagnostics(self) -> List[Dict]:
@@ -275,5 +253,5 @@ class SheetsConnector:
             return summary
 
         except Exception as e:
-            st.error(f"Error obteniendo analytics: {e}")
+            print(f"[GET ANALYTICS ERROR] {datetime.now()}: {str(e)}")
             return {}
