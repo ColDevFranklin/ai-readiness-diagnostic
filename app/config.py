@@ -1,4 +1,5 @@
 """
+app/config.py
 Configuración centralizada del sistema de diagnóstico AI Readiness
 """
 

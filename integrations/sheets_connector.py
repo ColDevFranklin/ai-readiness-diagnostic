@@ -1,6 +1,6 @@
 """
-Conector de Google Sheets - Version 3.2 PRODUCTION
-TYPE-SAFE serialization + defensive programming + observability
+Conector de Google Sheets - Version 3.3 PRODUCTION FINAL
+FIXED: Schema alignment + timestamp format + column mapping
 Autor: Andrés - AI Consultant
 """
 
@@ -56,42 +56,56 @@ class SheetsConnector:
             print(f"[WORKSHEET] ✅ Created: {worksheet_name}")
         return worksheet
 
-    def _safe_serialize(self, value: Any, field_name: str = "") -> str:
+    def _format_timestamp(self, dt: datetime) -> str:
         """
-        TYPE-SAFE serialization con defensive programming
-        Convierte cualquier tipo a string de forma segura
+        Formatear timestamp de forma consistente para Google Sheets
+        Formato: DD/MM/YYYY HH:MM:SS (compatible con Sheets locale ES)
         """
         try:
-            # Caso 1: None o vacío
-            if value is None:
+            # Asegurar que es datetime válido
+            if not isinstance(dt, datetime):
+                dt = datetime.now()
+
+            # Formato compatible con Google Sheets ES locale
+            formatted = dt.strftime("%d/%m/%Y %H:%M:%S")
+            return formatted
+        except Exception as e:
+            print(f"[TIMESTAMP ERROR] {e}")
+            # Fallback a timestamp actual
+            return datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+
+    def _safe_list_to_string(self, value: Any, separator: str = ", ") -> str:
+        """
+        Convertir lista a string de forma segura
+        Maneja: List[str], List[Any], str, None, otros
+        """
+        try:
+            if value is None or value == "":
                 return ""
 
-            # Caso 2: Lista (incluye List[str])
             if isinstance(value, list):
-                # Filtrar valores None/vacíos y convertir a string
-                clean_list = [str(x) for x in value if x is not None and str(x).strip()]
-                result = ", ".join(clean_list)
-                print(f"[SERIALIZE] {field_name}: List[{len(value)}] -> '{result}'")
-                return result
+                # Filtrar elementos vacíos/None y convertir a string
+                clean = [str(x).strip() for x in value if x is not None and str(x).strip()]
+                return separator.join(clean)
 
-            # Caso 3: String
             if isinstance(value, str):
                 return value.strip()
 
-            # Caso 4: Otros tipos (int, float, bool, etc.)
             return str(value)
 
         except Exception as e:
-            print(f"[SERIALIZE ERROR] {field_name}: {type(value)} -> {str(e)}")
-            # Fallback seguro
+            print(f"[LIST_TO_STRING ERROR] {e}")
             return str(value) if value else ""
 
     def save_diagnostic(self, result: DiagnosticResult) -> bool:
         """Guardar resultado completo del diagnóstico"""
 
-        print(f"\n{'='*60}")
-        print(f"[SAVE DIAGNOSTIC] START: {result.prospect_info.nombre_empresa}")
-        print(f"{'='*60}")
+        print(f"\n{'='*70}")
+        print(f"[SAVE DIAGNOSTIC] START")
+        print(f"  Empresa: {result.prospect_info.nombre_empresa}")
+        print(f"  Email: {result.prospect_info.contacto_email}")
+        print(f"  Timestamp: {result.created_at}")
+        print(f"{'='*70}")
 
         try:
             self._save_to_responses(result)
@@ -99,159 +113,228 @@ class SheetsConnector:
             self._update_analytics()
 
             print(f"[SAVE DIAGNOSTIC] ✅ SUCCESS")
-            print(f"  Empresa: {result.prospect_info.nombre_empresa}")
-            print(f"  Email: {result.prospect_info.contacto_email}")
-            print(f"  Score: {result.score.score_final}")
-            print(f"  Tier: {result.score.tier.value}")
-            print(f"{'='*60}\n")
+            print(f"  Score: {result.score.score_final} | Tier: {result.score.tier.value}")
+            print(f"{'='*70}\n")
 
             return True
 
         except Exception as e:
-            print(f"[SAVE DIAGNOSTIC] ❌ ERROR: {str(e)}")
-            print(f"  Empresa: {result.prospect_info.nombre_empresa}")
-            print(f"  Email: {result.prospect_info.contacto_email}")
+            print(f"[SAVE DIAGNOSTIC] ❌ CRITICAL ERROR: {str(e)}")
             print(traceback.format_exc())
-            print(f"{'='*60}\n")
+            print(f"{'='*70}\n")
             raise
 
     def _save_to_responses(self, result: DiagnosticResult):
-        """Guardar respuestas raw del prospecto - TYPE-SAFE"""
+        """
+        Guardar respuestas raw del prospecto
+        CRÍTICO: Cada columna debe tener exactamente un valor en el row
+        """
 
-        print(f"[RESPONSES] Guardando...")
+        print(f"[RESPONSES] Iniciando guardado...")
 
         worksheet = self._get_or_create_worksheet("responses")
 
-        # Crear headers si no existen
-        if worksheet.row_count == 1 or not worksheet.row_values(1):
-            headers = [
-                "timestamp", "diagnostic_id", "nombre_empresa", "sector",
-                "facturacion", "empleados", "contacto_nombre", "contacto_email",
-                "contacto_telefono", "cargo", "ciudad",
-                "motivacion", "toma_decisiones", "procesos_criticos",
-                "tareas_repetitivas", "compartir_informacion", "equipo_tecnico",
-                "capacidad_implementacion", "inversion_reciente", "frustracion_principal",
-                "urgencia", "proceso_aprobacion", "presupuesto_rango"
-            ]
-            worksheet.append_row(headers)
-            print(f"[RESPONSES] Headers creados")
+        # ✅ HEADERS DEFINITIVOS - 23 columnas
+        expected_headers = [
+            "timestamp",           # 1
+            "diagnostic_id",       # 2
+            "nombre_empresa",      # 3
+            "sector",              # 4
+            "facturacion",         # 5
+            "empleados",           # 6
+            "contacto_nombre",     # 7
+            "contacto_email",      # 8
+            "contacto_telefono",   # 9
+            "cargo",               # 10
+            "ciudad",              # 11
+            "motivacion",          # 12 - STRING con separador ", "
+            "toma_decisiones",     # 13
+            "procesos_criticos",   # 14
+            "tareas_repetitivas",  # 15
+            "compartir_informacion", # 16
+            "equipo_tecnico",      # 17
+            "capacidad_implementacion", # 18
+            "inversion_reciente",  # 19
+            "frustracion_principal", # 20
+            "urgencia",            # 21
+            "proceso_aprobacion",  # 22
+            "presupuesto_rango"    # 23
+        ]
 
-        # ✅ TYPE-SAFE serialization
-        motivacion_str = self._safe_serialize(result.responses.motivacion, "motivacion")
+        # Verificar/crear headers
+        existing_headers = worksheet.row_values(1) if worksheet.row_count > 0 else []
+
+        if not existing_headers or existing_headers != expected_headers:
+            print(f"[RESPONSES] Creando/actualizando headers")
+            worksheet.clear()
+            worksheet.append_row(expected_headers)
+            print(f"[RESPONSES] Headers creados: {len(expected_headers)} columnas")
+
+        # ✅ CONSTRUIR ROW CON VALIDACIÓN ESTRICTA
+        timestamp_str = self._format_timestamp(result.created_at)
+        motivacion_str = self._safe_list_to_string(result.responses.motivacion)
 
         row = [
-            result.created_at.strftime("%Y-%m-%d %H:%M:%S"),
-            result.diagnostic_id,
-            result.prospect_info.nombre_empresa,
-            result.prospect_info.sector,
-            result.prospect_info.facturacion_rango,
-            result.prospect_info.empleados_rango,
-            result.prospect_info.contacto_nombre,
-            result.prospect_info.contacto_email,
-            result.prospect_info.contacto_telefono,
-            result.prospect_info.cargo,
-            result.prospect_info.ciudad,
-            motivacion_str,  # ✅ SAFE
-            result.responses.toma_decisiones,
-            result.responses.procesos_criticos,
-            result.responses.tareas_repetitivas,
-            result.responses.compartir_informacion,
-            result.responses.equipo_tecnico,
-            result.responses.capacidad_implementacion,
-            result.responses.inversion_reciente,
-            result.responses.frustracion_principal,
-            result.responses.urgencia,
-            result.responses.proceso_aprobacion,
-            result.responses.presupuesto_rango
+            timestamp_str,                                  # 1
+            result.diagnostic_id,                           # 2
+            result.prospect_info.nombre_empresa,            # 3
+            result.prospect_info.sector,                    # 4
+            result.prospect_info.facturacion_rango,         # 5
+            result.prospect_info.empleados_rango,           # 6
+            result.prospect_info.contacto_nombre,           # 7
+            result.prospect_info.contacto_email,            # 8
+            result.prospect_info.contacto_telefono or "",   # 9
+            result.prospect_info.cargo,                     # 10
+            result.prospect_info.ciudad,                    # 11
+            motivacion_str,                                 # 12
+            result.responses.toma_decisiones or "",         # 13
+            result.responses.procesos_criticos or "",       # 14
+            result.responses.tareas_repetitivas or "",      # 15
+            result.responses.compartir_informacion or "",   # 16
+            result.responses.equipo_tecnico or "",          # 17
+            result.responses.capacidad_implementacion or "", # 18
+            result.responses.inversion_reciente or "",      # 19
+            result.responses.frustracion_principal or "",   # 20
+            result.responses.urgencia or "",                # 21
+            result.responses.proceso_aprobacion or "",      # 22
+            result.responses.presupuesto_rango or ""        # 23
         ]
+
+        # ✅ VALIDACIÓN CRÍTICA
+        if len(row) != len(expected_headers):
+            error_msg = f"SCHEMA MISMATCH: Row tiene {len(row)} valores, headers tiene {len(expected_headers)}"
+            print(f"[RESPONSES] ❌ {error_msg}")
+            raise ValueError(error_msg)
+
+        print(f"[RESPONSES] Row validado: {len(row)} columnas")
+        print(f"[RESPONSES] Timestamp: {timestamp_str}")
+        print(f"[RESPONSES] Motivación: {motivacion_str}")
 
         try:
             worksheet.append_row(row, value_input_option='USER_ENTERED')
-            print(f"[RESPONSES] ✅ Guardado")
-            print(f"  Motivaciones: {motivacion_str}")
+            print(f"[RESPONSES] ✅ Guardado exitoso")
         except Exception as e:
-            print(f"[RESPONSES] ❌ Error al append: {str(e)}")
-            print(f"  Row length: {len(row)}")
-            print(f"  Row data: {row}")
+            print(f"[RESPONSES] ❌ Error al append row: {str(e)}")
+            print(f"[RESPONSES] Row data: {row}")
             raise
 
     def _save_to_scores(self, result: DiagnosticResult):
-        """Guardar scores - SCHEMA ALINEADO"""
+        """
+        Guardar scores calculados
+        CRÍTICO: Schema alignment perfecto
+        """
 
-        print(f"[SCORES] Guardando...")
+        print(f"[SCORES] Iniciando guardado...")
 
         worksheet = self._get_or_create_worksheet("scores")
 
-        # Crear headers si no existen
-        if worksheet.row_count == 1 or not worksheet.row_values(1):
-            headers = [
-                "timestamp", "diagnostic_id", "nombre_empresa", "sector",
-                "contacto_nombre", "contacto_email", "contacto_telefono",
-                "cargo", "ciudad", "facturacion", "empleados",
-                "score_final", "tier", "confianza_clasificacion",
-                "madurez_digital_total", "madurez_decisiones", "madurez_procesos",
-                "madurez_integracion", "madurez_eficiencia",
-                "capacidad_inversion_total", "capacidad_presupuesto",
-                "capacidad_historial", "capacidad_tamano",
-                "viabilidad_total", "viabilidad_problema", "viabilidad_urgencia",
-                "viabilidad_decision",
-                "arquetipo_tipo", "arquetipo_nombre", "arquetipo_confianza",
-                "servicio_sugerido", "monto_min", "monto_max",
-                "probabilidad_cierre", "quick_wins_count", "red_flags_count"
-            ]
-            worksheet.append_row(headers)
-            print(f"[SCORES] Headers creados")
+        # ✅ HEADERS DEFINITIVOS - 35 columnas
+        expected_headers = [
+            "timestamp",                # 1
+            "diagnostic_id",            # 2
+            "nombre_empresa",           # 3
+            "sector",                   # 4
+            "contacto_nombre",          # 5
+            "contacto_email",           # 6
+            "contacto_telefono",        # 7
+            "cargo",                    # 8
+            "ciudad",                   # 9
+            "facturacion",              # 10
+            "empleados",                # 11
+            "score_final",              # 12
+            "tier",                     # 13
+            "confianza_clasificacion",  # 14
+            "madurez_digital_total",    # 15
+            "madurez_decisiones",       # 16
+            "madurez_procesos",         # 17
+            "madurez_integracion",      # 18
+            "madurez_eficiencia",       # 19
+            "capacidad_inversion_total", # 20
+            "capacidad_presupuesto",    # 21
+            "capacidad_historial",      # 22
+            "capacidad_tamano",         # 23
+            "viabilidad_total",         # 24
+            "viabilidad_problema",      # 25
+            "viabilidad_urgencia",      # 26
+            "viabilidad_decision",      # 27
+            "arquetipo_tipo",           # 28
+            "arquetipo_nombre",         # 29
+            "arquetipo_confianza",      # 30
+            "servicio_sugerido",        # 31
+            "monto_min",                # 32
+            "monto_max",                # 33
+            "probabilidad_cierre",      # 34
+            "quick_wins_count",         # 35
+            "red_flags_count"           # 36
+        ]
 
-        # SAFE ACCESS con valores default
+        # Verificar/crear headers
+        existing_headers = worksheet.row_values(1) if worksheet.row_count > 0 else []
+
+        if not existing_headers or existing_headers != expected_headers:
+            print(f"[SCORES] Creando/actualizando headers")
+            worksheet.clear()
+            worksheet.append_row(expected_headers)
+            print(f"[SCORES] Headers creados: {len(expected_headers)} columnas")
+
+        # ✅ SAFE ACCESS con valores default
+        timestamp_str = self._format_timestamp(result.created_at)
         confianza_clasificacion = getattr(result.score, 'confianza_clasificacion', 0.0)
         probabilidad_cierre = getattr(result.reunion_prep, 'probabilidad_cierre', 50)
 
         row = [
-            result.created_at.strftime("%Y-%m-%d %H:%M:%S"),
-            result.diagnostic_id,
-            result.prospect_info.nombre_empresa,
-            result.prospect_info.sector,
-            result.prospect_info.contacto_nombre,
-            result.prospect_info.contacto_email,
-            result.prospect_info.contacto_telefono,
-            result.prospect_info.cargo,
-            result.prospect_info.ciudad,
-            result.prospect_info.facturacion_rango,
-            result.prospect_info.empleados_rango,
-            result.score.score_final,
-            result.score.tier.value,
-            confianza_clasificacion,
-            result.score.madurez_digital.score_total,
-            result.score.madurez_digital.decisiones_basadas_datos,
-            result.score.madurez_digital.procesos_estandarizados,
-            result.score.madurez_digital.sistemas_integrados,
-            result.score.madurez_digital.eficiencia_operativa,
-            result.score.capacidad_inversion.score_total,
-            result.score.capacidad_inversion.presupuesto_disponible,
-            result.score.capacidad_inversion.historial_inversion,
-            result.score.capacidad_inversion.tamano_empresa,
-            result.score.viabilidad_comercial.score_total,
-            result.score.viabilidad_comercial.problema_claro,
-            result.score.viabilidad_comercial.urgencia_real,
-            result.score.viabilidad_comercial.poder_decision,
-            result.arquetipo.tipo,
-            result.arquetipo.nombre,
-            result.arquetipo.confianza,
-            result.servicio_sugerido,
-            result.monto_sugerido_min,
-            result.monto_sugerido_max,
-            probabilidad_cierre,
-            len(result.quick_wins),
-            len(result.red_flags)
+            timestamp_str,                                      # 1
+            result.diagnostic_id,                               # 2
+            result.prospect_info.nombre_empresa,                # 3
+            result.prospect_info.sector,                        # 4
+            result.prospect_info.contacto_nombre,               # 5
+            result.prospect_info.contacto_email,                # 6
+            result.prospect_info.contacto_telefono or "",       # 7
+            result.prospect_info.cargo,                         # 8
+            result.prospect_info.ciudad,                        # 9
+            result.prospect_info.facturacion_rango,             # 10
+            result.prospect_info.empleados_rango,               # 11
+            result.score.score_final,                           # 12
+            result.score.tier.value,                            # 13
+            confianza_clasificacion,                            # 14
+            result.score.madurez_digital.score_total,           # 15
+            result.score.madurez_digital.decisiones_basadas_datos, # 16
+            result.score.madurez_digital.procesos_estandarizados,  # 17
+            result.score.madurez_digital.sistemas_integrados,      # 18
+            result.score.madurez_digital.eficiencia_operativa,     # 19
+            result.score.capacidad_inversion.score_total,          # 20
+            result.score.capacidad_inversion.presupuesto_disponible, # 21
+            result.score.capacidad_inversion.historial_inversion,    # 22
+            result.score.capacidad_inversion.tamano_empresa,         # 23
+            result.score.viabilidad_comercial.score_total,           # 24
+            result.score.viabilidad_comercial.problema_claro,        # 25
+            result.score.viabilidad_comercial.urgencia_real,         # 26
+            result.score.viabilidad_comercial.poder_decision,        # 27
+            result.arquetipo.tipo,                                   # 28
+            result.arquetipo.nombre,                                 # 29
+            result.arquetipo.confianza,                              # 30
+            result.servicio_sugerido,                                # 31
+            result.monto_sugerido_min,                               # 32
+            result.monto_sugerido_max,                               # 33
+            probabilidad_cierre,                                     # 34
+            len(result.quick_wins),                                  # 35
+            len(result.red_flags)                                    # 36
         ]
+
+        # ✅ VALIDACIÓN CRÍTICA
+        if len(row) != len(expected_headers):
+            error_msg = f"SCHEMA MISMATCH: Row tiene {len(row)} valores, headers tiene {len(expected_headers)}"
+            print(f"[SCORES] ❌ {error_msg}")
+            raise ValueError(error_msg)
+
+        print(f"[SCORES] Row validado: {len(row)} columnas")
+        print(f"[SCORES] Score: {result.score.score_final} | Tier: {result.score.tier.value}")
 
         try:
             worksheet.append_row(row, value_input_option='USER_ENTERED')
-            print(f"[SCORES] ✅ Guardado")
-            print(f"  Score: {result.score.score_final} | Tier: {result.score.tier.value}")
+            print(f"[SCORES] ✅ Guardado exitoso")
         except Exception as e:
-            print(f"[SCORES] ❌ Error al append: {str(e)}")
-            print(f"  Row length: {len(row)}")
+            print(f"[SCORES] ❌ Error al append row: {str(e)}")
             raise
 
     def _update_analytics(self):
@@ -264,7 +347,7 @@ class SheetsConnector:
             scores_data = scores_ws.get_all_records()
 
             if not scores_data:
-                print(f"[ANALYTICS] No hay datos aún")
+                print(f"[ANALYTICS] No hay datos para procesar")
                 return
 
             df = pd.DataFrame(scores_data)
@@ -285,9 +368,11 @@ class SheetsConnector:
 
             analytics_ws = self._get_or_create_worksheet("analytics")
 
+            timestamp_now = self._format_timestamp(datetime.now())
+
             analytics_data = [
                 ["Métrica", "Valor", "Última Actualización"],
-                ["Total Diagnósticos", total_diagnosticos, datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
+                ["Total Diagnósticos", total_diagnosticos, timestamp_now],
                 ["Tier A", tier_a_count, ""],
                 ["Tier B", tier_b_count, ""],
                 ["Tier C", tier_c_count, ""],
@@ -298,10 +383,9 @@ class SheetsConnector:
             ]
 
             analytics_ws.clear()
-            analytics_ws.update('A1', analytics_data)
+            analytics_ws.update('A1', analytics_data, value_input_option='USER_ENTERED')
 
-            print(f"[ANALYTICS] ✅ Actualizado")
-            print(f"  Total: {total_diagnosticos} | Tier A: {tier_a_count}")
+            print(f"[ANALYTICS] ✅ Actualizado - Total: {total_diagnosticos}")
 
         except Exception as e:
             print(f"[ANALYTICS] ⚠️ Error (no crítico): {str(e)}")
