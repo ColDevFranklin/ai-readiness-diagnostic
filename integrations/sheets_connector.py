@@ -1,6 +1,6 @@
 """
-Conector de Google Sheets - Version 3.4 PRODUCTION FINAL
-FIXED: Circular import removed + Schema alignment + timestamp format
+Conector de Google Sheets - Version 3.5 PRODUCTION FINAL
+FIXED: Schema alignment para facturacion_rango y empleados_rango
 Autor: Andrés - AI Consultant
 """
 
@@ -124,6 +124,7 @@ class SheetsConnector:
         """
         Guardar respuestas raw del prospecto
         CRÍTICO: Cada columna debe tener exactamente un valor en el row
+        ✅ FIXED: Schema alignment con nombres reales del modelo
         """
 
         print(f"[RESPONSES] Iniciando guardado...")
@@ -135,13 +136,14 @@ class SheetsConnector:
 
         worksheet = self._get_or_create_worksheet("responses")
 
+        # ✅ CORRECCIÓN: Headers alineados con nombres reales del modelo
         expected_headers = [
             "timestamp",
             "diagnostic_id",
             "nombre_empresa",
             "sector",
-            "facturacion",
-            "empleados",
+            "facturacion_rango",      # ✅ CORREGIDO
+            "empleados_rango",        # ✅ CORREGIDO
             "contacto_nombre",
             "contacto_email",
             "contacto_telefono",
@@ -177,8 +179,8 @@ class SheetsConnector:
             result.diagnostic_id,
             result.prospect_info.nombre_empresa,
             result.prospect_info.sector,
-            result.prospect_info.facturacion_rango,
-            result.prospect_info.empleados_rango,
+            result.prospect_info.facturacion_rango,     # ✅ Ya está correcto
+            result.prospect_info.empleados_rango,       # ✅ Ya está correcto
             result.prospect_info.contacto_nombre,
             result.prospect_info.contacto_email,
             result.prospect_info.contacto_telefono or "",
@@ -211,7 +213,7 @@ class SheetsConnector:
         print(f"  [1] diagnostic_id: '{row[1]}'")
         print(f"  [2] nombre_empresa: '{row[2]}'")
         print(f"  [3] sector: '{row[3]}'")
-        print(f"  [4] facturacion: '{row[4]}'")
+        print(f"  [4] facturacion_rango: '{row[4]}'")
 
         try:
             worksheet.append_row(row, value_input_option='USER_ENTERED')
@@ -224,13 +226,14 @@ class SheetsConnector:
     def _save_to_scores(self, result: DiagnosticResult):
         """
         Guardar scores calculados
-        CRÍTICO: Schema alignment perfecto
+        ✅ FIXED: Schema alignment con nombres reales del modelo
         """
 
         print(f"[SCORES] Iniciando guardado...")
 
         worksheet = self._get_or_create_worksheet("scores")
 
+        # ✅ CORRECCIÓN: Headers alineados con nombres reales del modelo
         expected_headers = [
             "timestamp",
             "diagnostic_id",
@@ -241,8 +244,8 @@ class SheetsConnector:
             "contacto_telefono",
             "cargo",
             "ciudad",
-            "facturacion",
-            "empleados",
+            "facturacion_rango",      # ✅ CORREGIDO
+            "empleados_rango",        # ✅ CORREGIDO
             "score_final",
             "tier",
             "confianza_clasificacion",
@@ -292,8 +295,8 @@ class SheetsConnector:
             result.prospect_info.contacto_telefono or "",
             result.prospect_info.cargo,
             result.prospect_info.ciudad,
-            result.prospect_info.facturacion_rango,
-            result.prospect_info.empleados_rango,
+            result.prospect_info.facturacion_rango,     # ✅ Ya está correcto
+            result.prospect_info.empleados_rango,       # ✅ Ya está correcto
             result.score.score_final,
             result.score.tier.value,
             confianza_clasificacion,
