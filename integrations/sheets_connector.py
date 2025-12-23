@@ -1,1168 +1,431 @@
 """
-Formulario público de diagnóstico AI Readiness
-VERSION: 3.4 PRODUCTION - FIX: Data persistence across st.rerun()
+Conector de Google Sheets - Version 3.3 PRODUCTION FINAL
+FIXED: Schema alignment + timestamp format + column mapping
 Autor: Andrés - AI Consultant
 """
 
-import streamlit as st
-import json
-import re
-from pathlib import Path
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
+from typing import Dict, List, Optional, Any
+import streamlit as st
+import pandas as pd
 import traceback
 
-from core.models import (
-    ProspectInfo, DiagnosticResponses, DiagnosticResult
-)
-from core.scoring_engine import ScoringEngine
-from core.classifier import ArchetypeClassifier
-from integrations.sheets_connector import SheetsConnector
-from integrations.email_sender import EmailSender
-from integrations.pdf_generator import PDFGenerator
-from app.config import SECTORES, RANGOS_FACTURACION, RANGOS_EMPLEADOS, CARGOS
+from core.models import DiagnosticResult
 
 
-class InsightGenerator:
-    """Generador de insights estratégicos"""
+class SheetsConnector:
+    """Conector para Google Sheets con type-safe serialization"""
 
-    def generate_quick_wins(self, score, responses, arquetipo):
-        wins = []
-
-        if responses.tareas_repetitivas == "Sí, muchas tareas manuales repetitivas":
-            wins.append("Automatización de procesos manuales con RPA")
-
-        if responses.toma_decisiones in ["Reportes manuales en Excel", "Intuición del equipo"]:
-            wins.append("Dashboard de BI con visualización en tiempo real")
-
-        if responses.compartir_informacion in ["Email y carpetas compartidas", "WhatsApp/Slack sin estructura"]:
-            wins.append("Sistema de gestión documental centralizado")
-
-        if score.madurez_digital.score_total < 15:
-            wins.append("Workshop de alfabetización digital para líderes")
-
-        return wins[:3]
-
-    def generate_red_flags(self, score, responses, prospect_info):
-        flags = []
-
-        if responses.frustracion_principal == "No tengo frustraciones, todo funciona bien":
-            flags.append("⚠️ Posible Innovation Theater - Sin problema claro")
-
-        if responses.urgencia == "Exploratorio, sin fecha límite":
-            flags.append("⚠️ Baja urgencia - Riesgo de proyecto bloqueado")
-
-        if responses.presupuesto_rango in ["Menos de $10M COP", "No tengo presupuesto asignado"]:
-            flags.append("⚠️ Presupuesto insuficiente para implementación")
-
-        if responses.proceso_aprobacion == "No sé, debo consultar con otras áreas":
-            flags.append("⚠️ Poder de decisión limitado")
-
-        if score.score_final < 30:
-            flags.append("⚠️ Madurez digital muy baja - Requiere fase educativa previa")
-
-        return flags
-
-    def generate_insights(self, score, responses, arquetipo):
-        insights = []
-
-        if arquetipo.tipo == "traditional_giant":
-            insights.append("Empresa con infraestructura legacy - Priorizar integraciones")
-
-        if responses.equipo_tecnico == "No, necesitaríamos contratar o capacitar":
-            insights.append("Gap crítico en talento técnico - Incluir training en propuesta")
-
-        if score.capacidad_inversion.score_total >= 20:
-            insights.append("Capacidad financiera sólida - Propuesta premium viable")
-
-        return insights
-
-    def generate_reunion_prep(self, score, responses, arquetipo, prospect_info):
-        return {
-            "probabilidad_cierre": self._calculate_close_probability(score, responses),
-            "objeciones_esperadas": self._predict_objections(responses),
-            "estrategia_apertura": self._generate_opening_strategy(arquetipo, responses),
-            "preguntas_clave": self._generate_key_questions(responses)
-        }
-
-    def _calculate_close_probability(self, score, responses):
-        base_prob = (score.score_final / 100) * 100
-
-        if responses.urgencia == "Urgente, necesitamos solución en 1-3 meses":
-            base_prob += 15
-        elif responses.urgencia == "Importante, queremos empezar este año":
-            base_prob += 10
-
-        if responses.proceso_aprobacion == "Yo tengo la autoridad final":
-            base_prob += 10
-
-        return min(int(base_prob), 95)
-
-    def _predict_objections(self, responses):
-        objections = []
-
-        if responses.presupuesto_rango in ["Menos de $10M COP", "$10M - $30M COP"]:
-            objections.append("Costo vs ROI")
-
-        if responses.equipo_tecnico == "No, necesitaríamos contratar o capacitar":
-            objections.append("Falta de capacidad interna")
-
-        if responses.capacidad_implementacion == "Baja, tenemos muchas prioridades":
-            objections.append("Timing y recursos disponibles")
-
-        return objections
-
-    def _generate_opening_strategy(self, arquetipo, responses):
-        if arquetipo.tipo == "traditional_giant":
-            return "Abrir con caso de éxito en sector similar + enfoque en reducción de riesgo"
-        elif arquetipo.tipo == "ambitious_scaler":
-            return "Abrir con métricas de escalabilidad + velocidad de implementación"
-        else:
-            return "Abrir con quick wins tangibles + roadmap educativo"
-
-    def _generate_key_questions(self, responses):
-        questions = [
-            "¿Cuál es el proceso crítico donde más pierden dinero/tiempo actualmente?",
-            "¿Qué pasaría si no resuelven esto en los próximos 6 meses?"
+    def __init__(self):
+        """Inicializar conexión con Google Sheets"""
+        self.scope = [
+            'https://spreadsheets.google.com/feeds',
+            'https://www.googleapis.com/auth/drive'
         ]
 
-        if responses.equipo_tecnico == "No, necesitaríamos contratar o capacitar":
-            questions.append("¿Están abiertos a un modelo de staff augmentation temporal?")
-
-        return questions
-
-
-# ============================================================================
-# CONFIGURACIÓN DE PÁGINA
-# ============================================================================
-
-st.set_page_config(
-    page_title="AI Readiness Diagnostic",
-    page_icon="🎯",
-    layout="wide",
-    initial_sidebar_state="collapsed"
-)
-
-# ============================================================================
-# CSS PREMIUM
-# ============================================================================
-
-st.markdown("""
-<style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-
-    :root {
-        --primary: #2563eb;
-        --primary-dark: #1e40af;
-        --primary-light: #3b82f6;
-        --accent: #06b6d4;
-        --success: #10b981;
-        --warning: #f59e0b;
-        --danger: #ef4444;
-        --bg-main: #0f172a;
-        --bg-card: #1e293b;
-        --bg-card-hover: #334155;
-        --bg-darker: #0a0f1e;
-        --text-primary: #f1f5f9;
-        --text-secondary: #cbd5e1;
-        --text-muted: #94a3b8;
-        --border: #334155;
-        --border-light: #475569;
-        --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
-        --shadow-md: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.2);
-        --shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.2);
-        --radius: 12px;
-        --space-xs: 0.25rem;
-        --space-sm: 0.5rem;
-        --space-md: 1rem;
-        --space-lg: 1.5rem;
-        --space-xl: 2rem;
-    }
-
-    * {
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    }
-
-    .stApp {
-        background: linear-gradient(135deg, var(--bg-main) 0%, var(--bg-darker) 100%);
-    }
-
-    .block-container {
-        padding: var(--space-xl) var(--space-lg);
-        max-width: 1200px;
-    }
-
-    .hero-header {
-        background: linear-gradient(135deg, rgba(37, 99, 235, 0.1) 0%, rgba(6, 182, 212, 0.1) 100%);
-        border: 1px solid var(--border);
-        border-radius: var(--radius);
-        padding: var(--space-xl);
-        margin-bottom: var(--space-xl);
-        text-align: center;
-        backdrop-filter: blur(10px);
-    }
-
-    .main-title {
-        font-size: 2.5rem;
-        font-weight: 700;
-        color: var(--text-primary);
-        margin-bottom: var(--space-md);
-        letter-spacing: -0.02em;
-    }
-
-    .main-subtitle {
-        font-size: 1.125rem;
-        color: var(--text-secondary);
-        margin-bottom: var(--space-lg);
-        line-height: 1.6;
-    }
-
-    .trust-container {
-        display: flex;
-        justify-content: center;
-        gap: var(--space-lg);
-        flex-wrap: wrap;
-        margin-top: var(--space-lg);
-    }
-
-    .trust-badge {
-        display: flex;
-        align-items: center;
-        gap: var(--space-sm);
-        padding: var(--space-sm) var(--space-md);
-        background: var(--bg-card);
-        border: 1px solid var(--border);
-        border-radius: var(--radius);
-        color: var(--text-secondary);
-        font-size: 0.875rem;
-        font-weight: 500;
-    }
-
-    .section-card {
-        background: var(--bg-card);
-        border: 1px solid var(--border);
-        border-radius: var(--radius);
-        padding: var(--space-xl);
-        margin-bottom: var(--space-lg);
-        box-shadow: var(--shadow);
-        transition: all 0.3s ease;
-    }
-
-    .section-card:hover {
-        box-shadow: var(--shadow-md);
-        border-color: var(--primary);
-    }
-
-    .section-title {
-        font-size: 1.5rem;
-        font-weight: 600;
-        color: var(--text-primary);
-        margin-bottom: var(--space-lg);
-        padding-bottom: var(--space-md);
-        border-bottom: 2px solid var(--border);
-    }
-
-    .progress-wrapper {
-        margin-bottom: var(--space-lg);
-    }
-
-    .progress-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: var(--space-sm);
-    }
-
-    .progress-step-label {
-        font-size: 0.8125rem;
-        font-weight: 600;
-        color: var(--primary);
-        letter-spacing: 0.05em;
-    }
-
-    .progress-percentage {
-        font-size: 0.875rem;
-        font-weight: 600;
-        color: var(--text-secondary);
-    }
-
-    .stTextInput > div > div > input {
-        background: var(--bg-darker) !important;
-        border: 1px solid var(--border) !important;
-        border-radius: var(--radius) !important;
-        color: var(--text-primary) !important;
-        padding: 0.75rem 1rem !important;
-        font-size: 0.9375rem !important;
-        transition: all 0.2s ease !important;
-    }
-
-    .stTextInput > div > div > input:focus {
-        border-color: var(--primary) !important;
-        box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2) !important;
-    }
-
-    .stSelectbox > div > div {
-        background: var(--bg-darker) !important;
-        border: 1px solid var(--border) !important;
-        border-radius: var(--radius) !important;
-        color: var(--text-primary) !important;
-    }
-
-    label {
-        color: var(--text-secondary) !important;
-        font-weight: 500 !important;
-        font-size: 0.9375rem !important;
-        margin-bottom: var(--space-md) !important;
-    }
-
-    .stRadio > div {
-        gap: var(--space-sm);
-    }
-
-    .stRadio > div > label {
-        background: var(--bg-darker) !important;
-        border: 1.5px solid var(--border) !important;
-        border-radius: var(--radius) !important;
-        padding: 0.75rem 1rem !important;
-        margin: 0 !important;
-        cursor: pointer !important;
-        transition: all 0.2s ease !important;
-        display: flex !important;
-        align-items: center !important;
-    }
-
-    .stRadio > div > label:hover {
-        background: var(--bg-card) !important;
-        border-color: var(--primary-light) !important;
-    }
-
-    .stRadio > div > label > div:first-child {
-        margin-right: var(--space-md) !important;
-        width: 20px !important;
-        height: 20px !important;
-        min-width: 20px !important;
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-    }
-
-    .stRadio > div > label > div:first-child > div {
-        background: transparent !important;
-        border: 2px solid var(--border-light) !important;
-        width: 20px !important;
-        height: 20px !important;
-        border-radius: 50% !important;
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        position: relative !important;
-    }
-
-    .stRadio > div > label[data-checked="true"] {
-        background: rgba(37, 99, 235, 0.15) !important;
-        border-color: var(--primary) !important;
-    }
-
-    .stRadio > div > label[data-checked="true"] > div:first-child > div {
-        border-color: var(--primary) !important;
-        background: var(--primary) !important;
-        box-shadow: 0 0 0 2px var(--bg-darker), 0 0 0 4px var(--primary) !important;
-    }
-
-    .stRadio > div > label[data-checked="true"] > div:first-child > div::before {
-        content: '';
-        display: block;
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        background: white;
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-    }
-
-    .stRadio > div > label > div:last-child {
-        color: var(--text-secondary) !important;
-        font-size: 0.9375rem !important;
-        font-weight: 500 !important;
-        flex: 1 !important;
-    }
-
-    .stRadio > div > label[data-checked="true"] > div:last-child {
-        color: var(--text-primary) !important;
-        font-weight: 600 !important;
-    }
-
-    .stMultiSelect [data-baseweb="select"] {
-        background: var(--bg-darker) !important;
-        border: 1px solid var(--border) !important;
-        border-radius: var(--radius) !important;
-        min-height: 42px !important;
-    }
-
-    .stMultiSelect [data-baseweb="tag"] {
-        background: var(--primary) !important;
-        border: none !important;
-        border-radius: calc(var(--radius) - 2px) !important;
-        padding: 0.25rem 0.5rem !important;
-        color: white !important;
-        font-weight: 600 !important;
-        font-size: 0.8125rem !important;
-    }
-
-    .stButton > button {
-        width: 100%;
-        background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%) !important;
-        color: white !important;
-        font-weight: 600 !important;
-        font-size: 0.9375rem !important;
-        padding: 0.75rem 1.5rem !important;
-        border-radius: var(--radius) !important;
-        border: none !important;
-        box-shadow: var(--shadow-md) !important;
-        transition: all 0.2s ease !important;
-        letter-spacing: 0.01em;
-    }
-
-    .stButton > button:hover {
-        transform: translateY(-1px);
-        box-shadow: var(--shadow-lg) !important;
-        background: linear-gradient(135deg, var(--primary-light) 0%, var(--primary) 100%) !important;
-    }
-
-    .stButton > button:active {
-        transform: translateY(0);
-    }
-
-    .stAlert {
-        background: var(--bg-card) !important;
-        border: 1px solid var(--border) !important;
-        border-radius: var(--radius) !important;
-        padding: var(--space-md) !important;
-        color: var(--text-secondary) !important;
-        border-left-width: 3px !important;
-    }
-
-    .stSuccess {
-        border-left-color: var(--success) !important;
-        background: rgba(16, 185, 129, 0.05) !important;
-    }
-
-    .stWarning {
-        border-left-color: var(--warning) !important;
-        background: rgba(245, 158, 11, 0.05) !important;
-    }
-
-    .stError {
-        border-left-color: var(--danger) !important;
-        background: rgba(239, 68, 68, 0.05) !important;
-    }
-
-    .stInfo {
-        border-left-color: var(--accent) !important;
-        background: rgba(6, 182, 212, 0.05) !important;
-    }
-
-    [data-testid="metric-container"] {
-        background: var(--bg-card);
-        border: 1px solid var(--border);
-        border-radius: var(--radius);
-        padding: var(--space-lg);
-        box-shadow: var(--shadow);
-    }
-
-    [data-testid="stMetricLabel"] {
-        font-size: 0.8125rem !important;
-        font-weight: 600 !important;
-        color: var(--text-muted) !important;
-    }
-
-    [data-testid="stMetricValue"] {
-        font-size: 1.875rem !important;
-        font-weight: 700 !important;
-        color: var(--text-primary) !important;
-    }
-
-    .streamlit-expanderHeader {
-        background: var(--bg-card) !important;
-        border: 1px solid var(--border) !important;
-        border-radius: var(--radius) !important;
-        color: var(--text-primary) !important;
-        font-weight: 600 !important;
-        padding: var(--space-md) !important;
-    }
-
-    .streamlit-expanderHeader:hover {
-        background: var(--bg-card-hover) !important;
-        border-color: var(--primary) !important;
-    }
-
-    .security-notice {
-        background: var(--bg-card);
-        border: 1px solid var(--border);
-        border-radius: var(--radius);
-        padding: var(--space-lg);
-        margin-top: var(--space-xl);
-        text-align: center;
-        color: var(--text-muted);
-        font-size: 0.8125rem;
-        line-height: 1.6;
-    }
-
-    [data-testid="column"] {
-        padding: 0 var(--space-sm);
-    }
-
-    @media (max-width: 768px) {
-        .block-container {
-            padding: var(--space-lg) var(--space-md);
-        }
-
-        .main-title {
-            font-size: 1.75rem;
-        }
-
-        .section-card {
-            padding: var(--space-lg);
-        }
-
-        .trust-container {
-            gap: var(--space-sm);
-        }
-
-        [data-testid="stMetricValue"] {
-            font-size: 1.5rem !important;
-        }
-    }
-
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
-
-    ::-webkit-scrollbar {
-        width: 8px;
-    }
-
-    ::-webkit-scrollbar-track {
-        background: var(--bg-darker);
-    }
-
-    ::-webkit-scrollbar-thumb {
-        background: var(--border-light);
-        border-radius: var(--radius);
-    }
-
-    ::-webkit-scrollbar-thumb:hover {
-        background: var(--primary);
-    }
-
-</style>
-""", unsafe_allow_html=True)
-
-# ============================================================================
-# UTILIDADES
-# ============================================================================
-
-def validate_email(email: str) -> bool:
-    """Validar formato de email"""
-    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-    return re.match(pattern, email) is not None
-
-# ============================================================================
-# FUNCIONES DE CARGA
-# ============================================================================
-
-@st.cache_data
-def load_questions():
-    """Cargar preguntas desde JSON"""
-    questions_path = Path(__file__).parent.parent / "data" / "questions.json"
-    with open(questions_path, 'r', encoding='utf-8') as f:
-        return json.load(f)
-
-# ============================================================================
-# GESTIÓN DE ESTADO
-# ============================================================================
-
-def init_session_state():
-    """Inicializar TODAS las variables de session_state"""
-    if 'step' not in st.session_state:
-        st.session_state.step = 0
-
-    prospect_defaults = {
-        'nombre_empresa': '', 'sector': '', 'facturacion': '', 'empleados': '',
-        'contacto_nombre': '', 'contacto_email': '', 'contacto_telefono': '',
-        'cargo': '', 'ciudad': ''
-    }
-
-    for key, default in prospect_defaults.items():
-        if key not in st.session_state:
-            st.session_state[key] = default
-
-    diagnostic_defaults = {
-        'Q4': [], 'Q5': None, 'Q6': None, 'Q7': None, 'Q8': None,
-        'Q9': None, 'Q10': None, 'Q11': None, 'Q12': None, 'Q12_otro': '',
-        'Q13': None, 'Q14': None, 'Q15': None
-    }
-
-    for key, default in diagnostic_defaults.items():
-        if key not in st.session_state:
-            st.session_state[key] = default
-
-    if 'result' not in st.session_state:
-        st.session_state.result = None
-    if 'email_sent' not in st.session_state:
-        st.session_state.email_sent = False
-    if 'pdf_generated' not in st.session_state:
-        st.session_state.pdf_generated = False
-    if 'prospect_data_locked' not in st.session_state:
-        st.session_state.prospect_data_locked = None
-
-# ============================================================================
-# COMPONENTES UI
-# ============================================================================
-
-def show_header():
-    """Header hero moderno"""
-    st.markdown('''
-    <div class="hero-header">
-        <div class="main-title">AI Readiness Diagnostic</div>
-        <div class="main-subtitle">
-            Evaluación estratégica de madurez digital para empresas líderes
-        </div>
-        <div class="trust-container">
-            <div class="trust-badge">
-                <span>🔒</span>
-                <span>Datos Encriptados</span>
-            </div>
-            <div class="trust-badge">
-                <span>⚡</span>
-                <span>Análisis en Tiempo Real</span>
-            </div>
-            <div class="trust-badge">
-                <span>✓</span>
-                <span>100% Confidencial</span>
-            </div>
-        </div>
-    </div>
-    ''', unsafe_allow_html=True)
-
-def show_progress_bar(current_step, total_steps):
-    """Barra de progreso premium"""
-    progress = (current_step + 1) / total_steps
-    percentage = int(progress * 100)
-    steps = ["Información Empresarial", "Evaluación Estratégica", "Resultados"]
-
-    st.markdown(f"""
-    <div class="progress-wrapper">
-        <div class="progress-header">
-            <span class="progress-step-label">PASO {current_step + 1}/{total_steps}: {steps[current_step].upper()}</span>
-            <span class="progress-percentage">{percentage}%</span>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.progress(progress)
-
-def show_security_footer():
-    """Footer de seguridad"""
-    st.markdown("""
-    <div class="security-notice">
-        🔐 <strong>Protección de Datos Empresariales</strong><br>
-        Todos los datos son procesados bajo estrictos protocolos de seguridad y confidencialidad.
-        Cumplimiento total con normativas internacionales de protección de datos.
-    </div>
-    """, unsafe_allow_html=True)
-
-# ============================================================================
-# RECOLECCIÓN DE DATOS
-# ============================================================================
-
-def collect_prospect_info():
-    """Formulario de información empresarial"""
-
-    st.markdown('<div class="section-card">', unsafe_allow_html=True)
-    st.markdown('<div class="section-title">📊 Información Empresarial</div>', unsafe_allow_html=True)
-
-    col1, col2 = st.columns(2, gap="medium")
-
-    with col1:
-        st.text_input(
-            "Razón Social",
-            key="nombre_empresa",
-            placeholder="Ingrese el nombre legal de la empresa",
-            help="Denominación oficial registrada"
-        )
-
-        st.selectbox(
-            "Sector Industrial",
-            options=SECTORES,
-            key="sector",
-            help="Categoría principal de actividad económica"
-        )
-
-        st.selectbox(
-            "Facturación Anual",
-            options=RANGOS_FACTURACION,
-            key="facturacion",
-            help="Ingresos consolidados del último ejercicio fiscal"
-        )
-
-        st.selectbox(
-            "Plantilla de Personal",
-            options=RANGOS_EMPLEADOS,
-            key="empleados",
-            help="Número total de colaboradores activos"
-        )
-
-        st.text_input(
-            "Ubicación Principal",
-            key="ciudad",
-            placeholder="Ciudad de sede central",
-            help="Localización de oficinas corporativas"
-        )
-
-    with col2:
-        st.text_input(
-            "Nombre del Ejecutivo",
-            key="contacto_nombre",
-            placeholder="Nombre completo del representante",
-            help="Persona responsable de la evaluación"
-        )
-
-        st.text_input(
-            "Email Corporativo",
-            key="contacto_email",
-            placeholder="correo@empresa.com",
-            help="Dirección de correo empresarial"
-        )
-
-        st.text_input(
-            "Teléfono de Contacto",
-            key="contacto_telefono",
-            placeholder="+57 300 000 0000",
-            help="Número directo (opcional)"
-        )
-
-        st.selectbox(
-            "Posición Ejecutiva",
-            options=CARGOS,
-            key="cargo",
-            help="Rol dentro de la estructura organizacional"
-        )
-
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    # Validación
-    required_fields = [
-        st.session_state.nombre_empresa.strip(),
-        st.session_state.sector,
-        st.session_state.facturacion,
-        st.session_state.empleados,
-        st.session_state.contacto_nombre.strip(),
-        st.session_state.contacto_email.strip(),
-        st.session_state.cargo,
-        st.session_state.ciudad.strip()
-    ]
-
-    all_filled = all(required_fields)
-    email_valid = validate_email(st.session_state.contacto_email.strip()) if st.session_state.contacto_email.strip() else False
-
-    if not all_filled or not email_valid:
-        if not all_filled:
-            st.warning("⚠️ Complete todos los campos obligatorios para continuar")
-        elif not email_valid:
-            st.error("❌ El formato del email no es válido")
-
-    show_security_footer()
-
-    # ✅ FIX CRÍTICO: Persistir datos ANTES de st.rerun()
-    if st.button("Continuar Evaluación →") and all_filled and email_valid:
-        st.session_state.prospect_data_locked = {
-            'nombre_empresa': st.session_state.nombre_empresa.strip(),
-            'sector': st.session_state.sector,
-            'facturacion': st.session_state.facturacion,
-            'empleados': st.session_state.empleados,
-            'contacto_nombre': st.session_state.contacto_nombre.strip(),
-            'contacto_email': st.session_state.contacto_email.strip(),
-            'contacto_telefono': st.session_state.contacto_telefono.strip(),
-            'cargo': st.session_state.cargo,
-            'ciudad': st.session_state.ciudad.strip()
-        }
-        st.session_state.step = 1
-        st.rerun()
-
-    return all_filled and email_valid
-
-def show_diagnostic_questions():
-    """Cuestionario de evaluación"""
-    questions = load_questions()
-
-    # Bloque 1
-    st.markdown('<div class="section-card">', unsafe_allow_html=True)
-    st.markdown('<div class="section-title">🎯 Objetivos Estratégicos</div>', unsafe_allow_html=True)
-
-    q4_opciones = questions["bloque_1_identificacion"]["preguntas"][0]["opciones"]
-    st.multiselect(
-        "¿Qué objetivos estratégicos impulsan esta evaluación?",
-        options=q4_opciones,
-        key="Q4",
-        help="Seleccione todos los objetivos aplicables"
-    )
-
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    # Bloque 2
-    st.markdown('<div class="section-card">', unsafe_allow_html=True)
-    st.markdown('<div class="section-title">🔬 Diagnóstico Operacional</div>', unsafe_allow_html=True)
-
-    for pregunta in questions["bloque_2_diagnostico"]["preguntas"]:
-        q_id = pregunta["id"]
-        helper = pregunta.get("helper", "")
-
-        if pregunta.get("tiene_otro"):
-            opciones = pregunta["opciones"] + ["Otro"]
-            respuesta = st.radio(
-                pregunta["pregunta"],
-                options=opciones,
-                key=q_id,
-                help=helper if helper else None
+        try:
+            creds_dict = st.secrets["gcp_service_account"]
+            self.creds = ServiceAccountCredentials.from_json_keyfile_dict(
+                creds_dict, self.scope
             )
+            self.client = gspread.authorize(self.creds)
 
-            if respuesta == "Otro":
-                st.text_input(
-                    "Especifique:",
-                    key=f"{q_id}_otro",
-                    placeholder="Describa su caso específico"
-                )
-        else:
-            st.radio(
-                pregunta["pregunta"],
-                options=pregunta["opciones"],
-                key=q_id,
-                help=helper if helper else None
+            self.sheet_name = st.secrets.get("sheet_name", "AI_Readiness_Diagnostics")
+            self.spreadsheet = self.client.open(self.sheet_name)
+
+            print(f"[SHEETS INIT] ✅ Connected to: {self.sheet_name}")
+
+        except Exception as e:
+            print(f"[SHEETS INIT] ❌ ERROR: {str(e)}")
+            print(traceback.format_exc())
+            raise
+
+    def _get_or_create_worksheet(self, worksheet_name: str) -> gspread.Worksheet:
+        """Obtener o crear una worksheet"""
+        try:
+            worksheet = self.spreadsheet.worksheet(worksheet_name)
+            print(f"[WORKSHEET] ✅ Found: {worksheet_name}")
+        except gspread.WorksheetNotFound:
+            worksheet = self.spreadsheet.add_worksheet(
+                title=worksheet_name,
+                rows=1000,
+                cols=50
             )
+            print(f"[WORKSHEET] ✅ Created: {worksheet_name}")
+        return worksheet
 
-    st.markdown('</div>', unsafe_allow_html=True)
+    def _format_timestamp(self, dt: datetime) -> str:
+        """
+        Formatear timestamp de forma consistente para Google Sheets
+        Formato: DD/MM/YYYY HH:MM:SS (compatible con Sheets locale ES)
+        """
+        try:
+            # Asegurar que es datetime válido
+            if not isinstance(dt, datetime):
+                dt = datetime.now()
 
-    # Bloque 3
-    st.markdown('<div class="section-card">', unsafe_allow_html=True)
-    st.markdown('<div class="section-title">💼 Viabilidad Financiera</div>', unsafe_allow_html=True)
+            # Formato compatible con Google Sheets ES locale
+            formatted = dt.strftime("%d/%m/%Y %H:%M:%S")
+            return formatted
+        except Exception as e:
+            print(f"[TIMESTAMP ERROR] {e}")
+            # Fallback a timestamp actual
+            return datetime.now().strftime("%d/%m/%Y %H:%M:%S")
 
-    for pregunta in questions["bloque_3_viabilidad"]["preguntas"]:
-        st.radio(
-            pregunta["pregunta"],
-            options=pregunta["opciones"],
-            key=pregunta["id"]
-        )
+    def _safe_list_to_string(self, value: Any, separator: str = ", ") -> str:
+        """
+        Convertir lista a string de forma segura
+        Maneja: List[str], List[Any], str, None, otros
+        """
+        try:
+            if value is None or value == "":
+                return ""
 
-    st.markdown('</div>', unsafe_allow_html=True)
+            if isinstance(value, list):
+                # Filtrar elementos vacíos/None y convertir a string
+                clean = [str(x).strip() for x in value if x is not None and str(x).strip()]
+                return separator.join(clean)
 
-    # Validación
-    q4_valid = len(st.session_state.get("Q4", [])) > 0
-    radio_questions = ["Q5", "Q6", "Q7", "Q8", "Q9", "Q10", "Q11", "Q12", "Q13", "Q14", "Q15"]
-    radio_valid = all(st.session_state.get(q) is not None for q in radio_questions)
+            if isinstance(value, str):
+                return value.strip()
 
-    return q4_valid and radio_valid
+            return str(value)
 
-# ============================================================================
-# PROCESAMIENTO - TYPE-SAFE
-# ============================================================================
+        except Exception as e:
+            print(f"[LIST_TO_STRING ERROR] {e}")
+            return str(value) if value else ""
 
-def process_diagnostic():
-    """Procesar evaluación completa - TYPE-SAFE con data persistence"""
+    def save_diagnostic(self, result: DiagnosticResult) -> bool:
+        """Guardar resultado completo del diagnóstico"""
 
-    print(f"\n{'='*80}")
-    print(f"[PROCESS START] {datetime.now()}")
+        print(f"\n{'='*70}")
+        print(f"[SAVE DIAGNOSTIC] START")
+        print(f"  Empresa: {result.prospect_info.nombre_empresa}")
+        print(f"  Email: {result.prospect_info.contacto_email}")
+        print(f"  Timestamp: {result.created_at}")
+        print(f"{'='*70}")
 
-    # ✅ FIX CRÍTICO: Usar datos locked
-    if 'prospect_data_locked' in st.session_state and st.session_state.prospect_data_locked:
-        data = st.session_state.prospect_data_locked
-        print(f"[PROSPECT DATA] ✅ Usando prospect_data_locked")
-    else:
-        # Fallback (no debería ocurrir)
-        data = {
-            'nombre_empresa': st.session_state.get('nombre_empresa', '').strip(),
-            'sector': st.session_state.get('sector', ''),
-            'facturacion': st.session_state.get('facturacion', ''),
-            'empleados': st.session_state.get('empleados', ''),
-            'contacto_nombre': st.session_state.get('contacto_nombre', '').strip(),
-            'contacto_email': st.session_state.get('contacto_email', '').strip(),
-            'contacto_telefono': st.session_state.get('contacto_telefono', '').strip(),
-            'cargo': st.session_state.get('cargo', ''),
-            'ciudad': st.session_state.get('ciudad', '').strip()
-        }
-        print(f"[PROSPECT DATA] ⚠️ Usando fallback (prospect_data_locked no existe)")
+        try:
+            self._save_to_responses(result)
+            self._save_to_scores(result)
+            self._update_analytics()
 
-    # Logging detallado
-    print(f"[DEBUG] nombre_empresa: '{data['nombre_empresa']}'")
-    print(f"[DEBUG] contacto_email: '{data['contacto_email']}'")
-    print(f"[DEBUG] sector: '{data['sector']}'")
-    print(f"[DEBUG] ciudad: '{data['ciudad']}'")
+            print(f"[SAVE DIAGNOSTIC] ✅ SUCCESS")
+            print(f"  Score: {result.score.score_final} | Tier: {result.score.tier.value}")
+            print(f"{'='*70}\n")
 
-    # Validación crítica
-    if not data['nombre_empresa'] or not data['contacto_email']:
-        error_msg = "❌ ERROR CRÍTICO: Datos del formulario perdidos"
-        print(f"[ERROR] {error_msg}")
-        print(f"[DEBUG] prospect_data_locked exists: {'prospect_data_locked' in st.session_state}")
-        print(f"[DEBUG] prospect_data_locked value: {st.session_state.get('prospect_data_locked', 'N/A')}")
-        st.error(error_msg)
-        st.write("**Debug Info:**")
-        st.json(data)
-        st.stop()
+            return True
 
-    prospect_info = ProspectInfo(
-        nombre_empresa=data['nombre_empresa'],
-        sector=data['sector'],
-        facturacion_rango=data['facturacion'],
-        empleados_rango=data['empleados'],
-        contacto_nombre=data['contacto_nombre'],
-        contacto_email=data['contacto_email'],
-        contacto_telefono=data['contacto_telefono'],
-        cargo=data['cargo'],
-        ciudad=data['ciudad']
-    )
+        except Exception as e:
+            print(f"[SAVE DIAGNOSTIC] ❌ CRITICAL ERROR: {str(e)}")
+            print(traceback.format_exc())
+            print(f"{'='*70}\n")
+            raise
 
-    print(f"[PROSPECT INFO] ✅ Created for {prospect_info.nombre_empresa}")
+    def _save_to_responses(self, result: DiagnosticResult):
+        """
+        Guardar respuestas raw del prospecto
+        CRÍTICO: Cada columna debe tener exactamente un valor en el row
+        """
 
-    # Manejo de frustracion "Otro"
-    frustracion = st.session_state.Q12
-    if frustracion == "Otro":
-        frustracion = st.session_state.get("Q12_otro", "Otro")
+        print(f"[RESPONSES] Iniciando guardado...")
 
-    # ✅ TYPE-SAFE: motivacion siempre List[str]
-    motivacion_list = st.session_state.Q4 if st.session_state.Q4 else []
+        worksheet = self._get_or_create_worksheet("responses")
 
-    print(f"[DEBUG] Q4 type: {type(st.session_state.Q4)}")
-    print(f"[DEBUG] Q4 value: {st.session_state.Q4}")
-    print(f"[DEBUG] motivacion_list: {motivacion_list}")
+        # ✅ HEADERS DEFINITIVOS - 23 columnas
+        expected_headers = [
+            "timestamp",           # 1
+            "diagnostic_id",       # 2
+            "nombre_empresa",      # 3
+            "sector",              # 4
+            "facturacion",         # 5
+            "empleados",           # 6
+            "contacto_nombre",     # 7
+            "contacto_email",      # 8
+            "contacto_telefono",   # 9
+            "cargo",               # 10
+            "ciudad",              # 11
+            "motivacion",          # 12 - STRING con separador ", "
+            "toma_decisiones",     # 13
+            "procesos_criticos",   # 14
+            "tareas_repetitivas",  # 15
+            "compartir_informacion", # 16
+            "equipo_tecnico",      # 17
+            "capacidad_implementacion", # 18
+            "inversion_reciente",  # 19
+            "frustracion_principal", # 20
+            "urgencia",            # 21
+            "proceso_aprobacion",  # 22
+            "presupuesto_rango"    # 23
+        ]
 
-    responses = DiagnosticResponses(
-        motivacion=motivacion_list,
-        toma_decisiones=st.session_state.Q5,
-        procesos_criticos=st.session_state.Q6,
-        tareas_repetitivas=st.session_state.Q7,
-        compartir_informacion=st.session_state.Q8,
-        equipo_tecnico=st.session_state.Q9,
-        capacidad_implementacion=st.session_state.Q10,
-        inversion_reciente=st.session_state.Q11,
-        frustracion_principal=frustracion,
-        urgencia=st.session_state.Q13,
-        proceso_aprobacion=st.session_state.Q14,
-        presupuesto_rango=st.session_state.Q15
-    )
+        # Verificar/crear headers
+        existing_headers = worksheet.row_values(1) if worksheet.row_count > 0 else []
 
-    engine = ScoringEngine()
-    score = engine.calculate_full_score(responses, prospect_info)
+        if not existing_headers or existing_headers != expected_headers:
+            print(f"[RESPONSES] Creando/actualizando headers")
+            worksheet.clear()
+            worksheet.append_row(expected_headers)
+            print(f"[RESPONSES] Headers creados: {len(expected_headers)} columnas")
 
-    classifier = ArchetypeClassifier()
-    arquetipo = classifier.classify(score, responses, prospect_info)
+        # ✅ CONSTRUIR ROW CON VALIDACIÓN ESTRICTA
+        timestamp_str = self._format_timestamp(result.created_at)
+        motivacion_str = self._safe_list_to_string(result.responses.motivacion)
 
-    insight_gen = InsightGenerator()
-    quick_wins = insight_gen.generate_quick_wins(score, responses, arquetipo)
-    red_flags = insight_gen.generate_red_flags(score, responses, prospect_info)
-    insights = insight_gen.generate_insights(score, responses, arquetipo)
-    reunion_prep = insight_gen.generate_reunion_prep(score, responses, arquetipo, prospect_info)
+        row = [
+            timestamp_str,                                  # 1
+            result.diagnostic_id,                           # 2
+            result.prospect_info.nombre_empresa,            # 3
+            result.prospect_info.sector,                    # 4
+            result.prospect_info.facturacion_rango,         # 5
+            result.prospect_info.empleados_rango,           # 6
+            result.prospect_info.contacto_nombre,           # 7
+            result.prospect_info.contacto_email,            # 8
+            result.prospect_info.contacto_telefono or "",   # 9
+            result.prospect_info.cargo,                     # 10
+            result.prospect_info.ciudad,                    # 11
+            motivacion_str,                                 # 12
+            result.responses.toma_decisiones or "",         # 13
+            result.responses.procesos_criticos or "",       # 14
+            result.responses.tareas_repetitivas or "",      # 15
+            result.responses.compartir_informacion or "",   # 16
+            result.responses.equipo_tecnico or "",          # 17
+            result.responses.capacidad_implementacion or "", # 18
+            result.responses.inversion_reciente or "",      # 19
+            result.responses.frustracion_principal or "",   # 20
+            result.responses.urgencia or "",                # 21
+            result.responses.proceso_aprobacion or "",      # 22
+            result.responses.presupuesto_rango or ""        # 23
+        ]
 
-    if score.tier.value == "A":
-        servicio = "Implementación Completa"
-        monto_min, monto_max = 25000000, 45000000
-    elif score.tier.value == "B":
-        servicio = "Diagnóstico Profundo + Roadmap"
-        monto_min, monto_max = 12000000, 25000000
-    else:
-        servicio = "Workshop Educativo"
-        monto_min, monto_max = 0, 5000000
+        # ✅ VALIDACIÓN CRÍTICA
+        if len(row) != len(expected_headers):
+            error_msg = f"SCHEMA MISMATCH: Row tiene {len(row)} valores, headers tiene {len(expected_headers)}"
+            print(f"[RESPONSES] ❌ {error_msg}")
+            raise ValueError(error_msg)
 
-    result = DiagnosticResult(
-        prospect_info=prospect_info,
-        responses=responses,
-        score=score,
-        arquetipo=arquetipo,
-        quick_wins=quick_wins,
-        red_flags=red_flags,
-        insights=insights,
-        servicio_sugerido=servicio,
-        monto_sugerido_min=monto_min,
-        monto_sugerido_max=monto_max,
-        reunion_prep=reunion_prep
-    )
+        print(f"[RESPONSES] Row validado: {len(row)} columnas")
+        print(f"[RESPONSES] Timestamp: {timestamp_str}")
+        print(f"[RESPONSES] Motivación: {motivacion_str}")
 
-    print(f"[PROCESS END] Result created for {prospect_info.nombre_empresa}")
-    print(f"{'='*80}\n")
+        try:
+            worksheet.append_row(row, value_input_option='USER_ENTERED')
+            print(f"[RESPONSES] ✅ Guardado exitoso")
+        except Exception as e:
+            print(f"[RESPONSES] ❌ Error al append row: {str(e)}")
+            print(f"[RESPONSES] Row data: {row}")
+            raise
 
-    return result
+    def _save_to_scores(self, result: DiagnosticResult):
+        """
+        Guardar scores calculados
+        CRÍTICO: Schema alignment perfecto
+        """
 
-# ============================================================================
-# CONFIRMACIÓN
-# ============================================================================
+        print(f"[SCORES] Iniciando guardado...")
 
-def show_confirmation_screen(result):
-    """Pantalla de resultados"""
-    st.markdown('<div class="section-card">', unsafe_allow_html=True)
-    st.markdown("## ✅ Evaluación Completada")
+        worksheet = self._get_or_create_worksheet("scores")
 
-    email_sent = st.session_state.get("email_sent", False)
+        # ✅ HEADERS DEFINITIVOS - 35 columnas
+        expected_headers = [
+            "timestamp",                # 1
+            "diagnostic_id",            # 2
+            "nombre_empresa",           # 3
+            "sector",                   # 4
+            "contacto_nombre",          # 5
+            "contacto_email",           # 6
+            "contacto_telefono",        # 7
+            "cargo",                    # 8
+            "ciudad",                   # 9
+            "facturacion",              # 10
+            "empleados",                # 11
+            "score_final",              # 12
+            "tier",                     # 13
+            "confianza_clasificacion",  # 14
+            "madurez_digital_total",    # 15
+            "madurez_decisiones",       # 16
+            "madurez_procesos",         # 17
+            "madurez_integracion",      # 18
+            "madurez_eficiencia",       # 19
+            "capacidad_inversion_total", # 20
+            "capacidad_presupuesto",    # 21
+            "capacidad_historial",      # 22
+            "capacidad_tamano",         # 23
+            "viabilidad_total",         # 24
+            "viabilidad_problema",      # 25
+            "viabilidad_urgencia",      # 26
+            "viabilidad_decision",      # 27
+            "arquetipo_tipo",           # 28
+            "arquetipo_nombre",         # 29
+            "arquetipo_confianza",      # 30
+            "servicio_sugerido",        # 31
+            "monto_min",                # 32
+            "monto_max",                # 33
+            "probabilidad_cierre",      # 34
+            "quick_wins_count",         # 35
+            "red_flags_count"           # 36
+        ]
 
-    if email_sent:
-        st.success(f"""
-        **{result.prospect_info.contacto_nombre}**, gracias por completar la evaluación estratégica.
+        # Verificar/crear headers
+        existing_headers = worksheet.row_values(1) if worksheet.row_count > 0 else []
 
-        Análisis de **{result.prospect_info.nombre_empresa}** procesado exitosamente.
+        if not existing_headers or existing_headers != expected_headers:
+            print(f"[SCORES] Creando/actualizando headers")
+            worksheet.clear()
+            worksheet.append_row(expected_headers)
+            print(f"[SCORES] Headers creados: {len(expected_headers)} columnas")
 
-        📧 Reporte enviado a: {result.prospect_info.contacto_email}
-        """)
-    else:
-        st.warning(f"""
-        **{result.prospect_info.contacto_nombre}**, evaluación completada.
+        # ✅ SAFE ACCESS con valores default
+        timestamp_str = self._format_timestamp(result.created_at)
+        confianza_clasificacion = getattr(result.score, 'confianza_clasificacion', 0.0)
+        probabilidad_cierre = getattr(result.reunion_prep, 'probabilidad_cierre', 50)
 
-        ⚠️ Contacto manual programado en 24h.
+        row = [
+            timestamp_str,                                      # 1
+            result.diagnostic_id,                               # 2
+            result.prospect_info.nombre_empresa,                # 3
+            result.prospect_info.sector,                        # 4
+            result.prospect_info.contacto_nombre,               # 5
+            result.prospect_info.contacto_email,                # 6
+            result.prospect_info.contacto_telefono or "",       # 7
+            result.prospect_info.cargo,                         # 8
+            result.prospect_info.ciudad,                        # 9
+            result.prospect_info.facturacion_rango,             # 10
+            result.prospect_info.empleados_rango,               # 11
+            result.score.score_final,                           # 12
+            result.score.tier.value,                            # 13
+            confianza_clasificacion,                            # 14
+            result.score.madurez_digital.score_total,           # 15
+            result.score.madurez_digital.decisiones_basadas_datos, # 16
+            result.score.madurez_digital.procesos_estandarizados,  # 17
+            result.score.madurez_digital.sistemas_integrados,      # 18
+            result.score.madurez_digital.eficiencia_operativa,     # 19
+            result.score.capacidad_inversion.score_total,          # 20
+            result.score.capacidad_inversion.presupuesto_disponible, # 21
+            result.score.capacidad_inversion.historial_inversion,    # 22
+            result.score.capacidad_inversion.tamano_empresa,         # 23
+            result.score.viabilidad_comercial.score_total,           # 24
+            result.score.viabilidad_comercial.problema_claro,        # 25
+            result.score.viabilidad_comercial.urgencia_real,         # 26
+            result.score.viabilidad_comercial.poder_decision,        # 27
+            result.arquetipo.tipo,                                   # 28
+            result.arquetipo.nombre,                                 # 29
+            result.arquetipo.confianza,                              # 30
+            result.servicio_sugerido,                                # 31
+            result.monto_sugerido_min,                               # 32
+            result.monto_sugerido_max,                               # 33
+            probabilidad_cierre,                                     # 34
+            len(result.quick_wins),                                  # 35
+            len(result.red_flags)                                    # 36
+        ]
 
-        📧 {result.prospect_info.contacto_email}
-        """)
+        # ✅ VALIDACIÓN CRÍTICA
+        if len(row) != len(expected_headers):
+            error_msg = f"SCHEMA MISMATCH: Row tiene {len(row)} valores, headers tiene {len(expected_headers)}"
+            print(f"[SCORES] ❌ {error_msg}")
+            raise ValueError(error_msg)
 
-    st.markdown("### 📊 Métricas de Madurez")
+        print(f"[SCORES] Row validado: {len(row)} columnas")
+        print(f"[SCORES] Score: {result.score.score_final} | Tier: {result.score.tier.value}")
 
-    col1, col2, col3 = st.columns(3)
+        try:
+            worksheet.append_row(row, value_input_option='USER_ENTERED')
+            print(f"[SCORES] ✅ Guardado exitoso")
+        except Exception as e:
+            print(f"[SCORES] ❌ Error al append row: {str(e)}")
+            raise
 
-    with col1:
-        st.metric(
-            "Madurez Digital",
-            f"{result.score.madurez_digital.score_total}/40",
-            delta=f"Tier {result.score.tier.value}"
-        )
+    def _update_analytics(self):
+        """Actualizar métricas agregadas"""
 
-    with col2:
-        st.metric(
-            "Capacidad Financiera",
-            f"{result.score.capacidad_inversion.score_total}/30"
-        )
+        print(f"[ANALYTICS] Actualizando...")
 
-    with col3:
-        st.metric(
-            "Viabilidad Comercial",
-            f"{result.score.viabilidad_comercial.score_total}/30"
-        )
+        try:
+            scores_ws = self._get_or_create_worksheet("scores")
+            scores_data = scores_ws.get_all_records()
 
-    st.markdown("### 🎯 Próximas Fases")
+            if not scores_data:
+                print(f"[ANALYTICS] No hay datos para procesar")
+                return
 
-    st.info(f"""
-    **Agenda de seguimiento (48-72h):**
+            df = pd.DataFrame(scores_data)
 
-    1. Análisis detallado de oportunidades para {result.prospect_info.nombre_empresa}
-    2. Casos de éxito en {result.prospect_info.sector}
-    3. Propuesta ejecutiva personalizada
+            total_diagnosticos = len(df)
+            tier_a_count = len(df[df['tier'] == 'A'])
+            tier_b_count = len(df[df['tier'] == 'B'])
+            tier_c_count = len(df[df['tier'] == 'C'])
 
-    **Contacto:**
-    - Email: {result.prospect_info.contacto_email}
-    - Tel: {result.prospect_info.contacto_telefono or 'N/D'}
-    """)
+            score_promedio = df['score_final'].mean() if 'score_final' in df.columns and len(df) > 0 else 0
+            prob_cierre_promedio = df['probabilidad_cierre'].mean() if 'probabilidad_cierre' in df.columns and len(df) > 0 else 0
 
-    st.markdown('</div>', unsafe_allow_html=True)
+            if 'monto_min' in df.columns and 'monto_max' in df.columns and 'probabilidad_cierre' in df.columns:
+                df['pipeline_value'] = (df['monto_min'] + df['monto_max']) / 2 * (df['probabilidad_cierre'] / 100)
+                pipeline_total = df['pipeline_value'].sum()
+            else:
+                pipeline_total = 0
 
-    if not email_sent or not st.session_state.get("pdf_generated", False):
-        with st.expander("ℹ️ Estado del Sistema"):
-            st.write(f"- Evaluación: ✅")
-            st.write(f"- Email: {'✅' if email_sent else '❌'}")
-            st.write(f"- PDF: {'✅' if st.session_state.get('pdf_generated', False) else '❌'}")
-            st.write(f"- Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            analytics_ws = self._get_or_create_worksheet("analytics")
 
-    if st.button("🔄 Nueva Evaluación"):
-        for key in list(st.session_state.keys()):
-            del st.session_state[key]
-        st.rerun()
+            timestamp_now = self._format_timestamp(datetime.now())
 
-    show_security_footer()
+            analytics_data = [
+                ["Métrica", "Valor", "Última Actualización"],
+                ["Total Diagnósticos", total_diagnosticos, timestamp_now],
+                ["Tier A", tier_a_count, ""],
+                ["Tier B", tier_b_count, ""],
+                ["Tier C", tier_c_count, ""],
+                ["Score Promedio", f"{score_promedio:.1f}", ""],
+                ["Prob. Cierre Promedio", f"{prob_cierre_promedio:.1f}%", ""],
+                ["Pipeline Value Estimado", f"${pipeline_total:,.0f} COP", ""],
+                ["Conversion Rate (Tier A)", f"{tier_a_count/total_diagnosticos*100:.1f}%" if total_diagnosticos > 0 else "0%", ""]
+            ]
 
-# ============================================================================
-# MAIN
-# ============================================================================
+            analytics_ws.clear()
+            analytics_ws.update('A1', analytics_data, value_input_option='USER_ENTERED')
 
-def main():
-    """Función principal"""
-    init_session_state()
-    show_header()
+            print(f"[ANALYTICS] ✅ Actualizado - Total: {total_diagnosticos}")
 
-    if st.session_state.step == 0:
-        show_progress_bar(0, 2)
-        collect_prospect_info()
+        except Exception as e:
+            print(f"[ANALYTICS] ⚠️ Error (no crítico): {str(e)}")
+            print(traceback.format_exc())
 
-    elif st.session_state.step == 1:
-        show_progress_bar(1, 2)
-        if show_diagnostic_questions():
-            if st.button("Procesar Análisis"):
-                with st.spinner("Procesando evaluación estratégica..."):
+    def get_all_diagnostics(self, limit: Optional[int] = None) -> List[Dict]:
+        """Obtener todos los diagnósticos"""
+        try:
+            scores_ws = self._get_or_create_worksheet("scores")
+            data = scores_ws.get_all_records()
+            data = sorted(data, key=lambda x: x.get('timestamp', ''), reverse=True)
 
-                    print(f"\n{'='*80}")
-                    print(f"[DIAGNOSTIC START] {datetime.now()}")
-                    print(f"{'='*80}\n")
+            if limit:
+                data = data[:limit]
 
-                    result = process_diagnostic()
+            return data
 
-                    save_success = False
-                    try:
-                        print(f"[SHEETS] Intentando guardar...")
-                        connector = SheetsConnector()
-                        connector.save_diagnostic(result)
-                        save_success = True
-                        st.success("✅ Datos almacenados en Google Sheets")
-                        print(f"[SHEETS] ✅ Guardado exitoso")
-                    except Exception as e:
-                        st.error(f"❌ Error crítico en Google Sheets: {str(e)}")
-                        print(f"[SHEETS] ❌ ERROR: {str(e)}")
-                        print(traceback.format_exc())
+        except Exception as e:
+            print(f"[GET DIAGNOSTICS] ❌ ERROR: {str(e)}")
+            print(traceback.format_exc())
+            return []
 
-                        if st.button("🔄 Reintentar Guardado"):
-                            st.rerun()
-                        st.stop()
+    def get_tier_a_diagnostics(self) -> List[Dict]:
+        """Obtener solo diagnósticos Tier A"""
+        all_data = self.get_all_diagnostics()
+        return [d for d in all_data if d.get('tier') == 'A']
 
-                    pdf_success = False
-                    pdf_path = None
-                    if save_success:
-                        try:
-                            print(f"[PDF] Generando...")
-                            pdf_gen = PDFGenerator()
-                            pdf_path = pdf_gen.generate_prospect_pdf(result)
-                            pdf_success = True
-                            st.success("✅ PDF generado")
-                            print(f"[PDF] ✅ Generado: {pdf_path}")
-                        except Exception as e:
-                            st.warning(f"⚠️ PDF no disponible: {str(e)}")
-                            print(f"[PDF] ⚠️ ERROR: {str(e)}")
-                            print(traceback.format_exc())
+    def get_analytics_summary(self) -> Dict:
+        """Obtener resumen de analytics"""
+        try:
+            analytics_ws = self._get_or_create_worksheet("analytics")
+            data = analytics_ws.get_all_records()
 
-                    email_success = False
-                    if save_success:
-                        try:
-                            print(f"[EMAIL] Enviando...")
-                            email_sender = EmailSender()
-                            email_sender.send_confirmation_email(result, pdf_path)
-                            email_success = True
-                            st.success(f"✅ Email enviado a {result.prospect_info.contacto_email}")
-                            print(f"[EMAIL] ✅ Enviado a {result.prospect_info.contacto_email}")
-                        except Exception as e:
-                            st.warning(f"⚠️ Email no enviado: {str(e)}")
-                            print(f"[EMAIL] ⚠️ ERROR: {str(e)}")
-                            print(traceback.format_exc())
+            summary = {}
+            for row in data:
+                summary[row.get('Métrica', '')] = row.get('Valor', '')
 
-                    if save_success:
-                        st.session_state.result = result
-                        st.session_state.email_sent = email_success
-                        st.session_state.pdf_generated = pdf_success
-                        st.session_state.step = 2
+            return summary
 
-                        print(f"\n{'='*80}")
-                        print(f"[DIAGNOSTIC END] {datetime.now()}")
-                        print(f"  Sheets: {'✅' if save_success else '❌'}")
-                        print(f"  PDF: {'✅' if pdf_success else '❌'}")
-                        print(f"  Email: {'✅' if email_success else '❌'}")
-                        print(f"{'='*80}\n")
-
-                        st.rerun()
-        else:
-            st.warning("⚠️ Complete todas las preguntas para continuar")
-
-    elif st.session_state.step == 2:
-        show_confirmation_screen(st.session_state.result)
-
-if __name__ == "__main__":
-    main()
+        except Exception as e:
+            print(f"[GET ANALYTICS] ❌ ERROR: {str(e)}")
+            print(traceback.format_exc())
+            return {}
