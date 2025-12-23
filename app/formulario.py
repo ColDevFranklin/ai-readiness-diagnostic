@@ -88,9 +88,6 @@ st.markdown("""
         padding: var(--space-xl) var(--space-lg);
     }
 
-    /* ============================================
-       HEADER
-       ============================================ */
     .hero-header {
         text-align: center;
         margin-bottom: var(--space-xl);
@@ -144,9 +141,6 @@ st.markdown("""
         border-color: rgba(37, 99, 235, 0.3);
     }
 
-    /* ============================================
-       PROGRESS
-       ============================================ */
     .progress-wrapper {
         background: var(--bg-card);
         border: 1px solid var(--border);
@@ -187,9 +181,6 @@ st.markdown("""
         height: 6px;
     }
 
-    /* ============================================
-       SECTION CARDS
-       ============================================ */
     .section-card {
         background: var(--bg-card);
         border: 1px solid var(--border);
@@ -208,9 +199,6 @@ st.markdown("""
         border-bottom: 1px solid var(--border);
     }
 
-    /* ============================================
-       FORM INPUTS
-       ============================================ */
     .stTextInput label,
     .stSelectbox label,
     .stMultiSelect label {
@@ -242,7 +230,6 @@ st.markdown("""
         outline: none !important;
     }
 
-    /* Selectbox */
     .stSelectbox [data-baseweb="select"] {
         background: var(--bg-darker) !important;
         border: 1px solid var(--border) !important;
@@ -261,7 +248,6 @@ st.markdown("""
         padding: 0.375rem 0.875rem !important;
     }
 
-    /* Dropdown menu */
     [data-baseweb="popover"] {
         background: var(--bg-card) !important;
         border: 1px solid var(--border) !important;
@@ -286,9 +272,6 @@ st.markdown("""
         color: var(--primary-light) !important;
     }
 
-    /* ============================================
-       RADIO BUTTONS
-       ============================================ */
     .stRadio > label {
         font-size: 0.8125rem !important;
         font-weight: 600 !important;
@@ -302,7 +285,7 @@ st.markdown("""
 
     .stRadio > div > label {
         background: var(--bg-darker) !important;
-        border: 1px solid var(--border) !important;
+        border: 1.5px solid var(--border) !important;
         border-radius: var(--radius) !important;
         padding: 0.75rem 1rem !important;
         margin: 0 !important;
@@ -314,34 +297,43 @@ st.markdown("""
 
     .stRadio > div > label:hover {
         background: var(--bg-card) !important;
-        border-color: var(--primary) !important;
+        border-color: var(--primary-light) !important;
     }
 
     .stRadio > div > label > div:first-child {
         margin-right: var(--space-md) !important;
-        width: 18px !important;
-        height: 18px !important;
-        min-width: 18px !important;
+        width: 20px !important;
+        height: 20px !important;
+        min-width: 20px !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
     }
 
     .stRadio > div > label > div:first-child > div {
         background: transparent !important;
         border: 2px solid var(--border-light) !important;
-        width: 18px !important;
-        height: 18px !important;
+        width: 20px !important;
+        height: 20px !important;
+        border-radius: 50% !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        position: relative !important;
     }
 
     .stRadio > div > label[data-checked="true"] {
-        background: rgba(37, 99, 235, 0.1) !important;
+        background: rgba(37, 99, 235, 0.15) !important;
         border-color: var(--primary) !important;
     }
 
     .stRadio > div > label[data-checked="true"] > div:first-child > div {
         border-color: var(--primary) !important;
         background: var(--primary) !important;
+        box-shadow: 0 0 0 2px var(--bg-darker), 0 0 0 4px var(--primary) !important;
     }
 
-    .stRadio > div > label[data-checked="true"] > div:first-child > div::after {
+    .stRadio > div > label[data-checked="true"] > div:first-child > div::before {
         content: '';
         display: block;
         width: 8px;
@@ -358,15 +350,14 @@ st.markdown("""
         color: var(--text-secondary) !important;
         font-size: 0.9375rem !important;
         font-weight: 500 !important;
+        flex: 1 !important;
     }
 
     .stRadio > div > label[data-checked="true"] > div:last-child {
         color: var(--text-primary) !important;
+        font-weight: 600 !important;
     }
 
-    /* ============================================
-       MULTISELECT
-       ============================================ */
     .stMultiSelect [data-baseweb="select"] {
         background: var(--bg-darker) !important;
         border: 1px solid var(--border) !important;
@@ -384,9 +375,6 @@ st.markdown("""
         font-size: 0.8125rem !important;
     }
 
-    /* ============================================
-       BUTTONS
-       ============================================ */
     .stButton > button {
         width: 100%;
         background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%) !important;
@@ -411,9 +399,6 @@ st.markdown("""
         transform: translateY(0);
     }
 
-    /* ============================================
-       ALERTS
-       ============================================ */
     .stAlert {
         background: var(--bg-card) !important;
         border: 1px solid var(--border) !important;
@@ -443,9 +428,6 @@ st.markdown("""
         background: rgba(6, 182, 212, 0.05) !important;
     }
 
-    /* ============================================
-       METRICS
-       ============================================ */
     [data-testid="metric-container"] {
         background: var(--bg-card);
         border: 1px solid var(--border);
@@ -466,9 +448,6 @@ st.markdown("""
         color: var(--text-primary) !important;
     }
 
-    /* ============================================
-       EXPANDER
-       ============================================ */
     .streamlit-expanderHeader {
         background: var(--bg-card) !important;
         border: 1px solid var(--border) !important;
@@ -483,9 +462,6 @@ st.markdown("""
         border-color: var(--primary) !important;
     }
 
-    /* ============================================
-       SECURITY NOTICE
-       ============================================ */
     .security-notice {
         background: var(--bg-card);
         border: 1px solid var(--border);
@@ -498,16 +474,10 @@ st.markdown("""
         line-height: 1.6;
     }
 
-    /* ============================================
-       COLUMNS
-       ============================================ */
     [data-testid="column"] {
         padding: 0 var(--space-sm);
     }
 
-    /* ============================================
-       RESPONSIVE
-       ============================================ */
     @media (max-width: 768px) {
         .block-container {
             padding: var(--space-lg) var(--space-md);
@@ -530,16 +500,10 @@ st.markdown("""
         }
     }
 
-    /* ============================================
-       HIDE STREAMLIT
-       ============================================ */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
 
-    /* ============================================
-       SCROLLBAR
-       ============================================ */
     ::-webkit-scrollbar {
         width: 8px;
     }
@@ -854,23 +818,25 @@ def show_diagnostic_questions():
 def process_diagnostic():
     """Procesar evaluación completa"""
     prospect_info = ProspectInfo(
-        nombre_empresa=st.session_state.nombre_empresa,
+        nombre_empresa=st.session_state.nombre_empresa.strip(),
         sector=st.session_state.sector,
         facturacion_rango=st.session_state.facturacion,
         empleados_rango=st.session_state.empleados,
-        contacto_nombre=st.session_state.contacto_nombre,
-        contacto_email=st.session_state.contacto_email,
-        contacto_telefono=st.session_state.contacto_telefono or "",
+        contacto_nombre=st.session_state.contacto_nombre.strip(),
+        contacto_email=st.session_state.contacto_email.strip(),
+        contacto_telefono=st.session_state.contacto_telefono.strip(),
         cargo=st.session_state.cargo,
-        ciudad=st.session_state.ciudad
+        ciudad=st.session_state.ciudad.strip()
     )
 
     frustracion = st.session_state.Q12
     if frustracion == "Otro":
         frustracion = st.session_state.get("Q12_otro", "Otro")
 
+    motivaciones_str = ", ".join(st.session_state.Q4) if st.session_state.Q4 else ""
+
     responses = DiagnosticResponses(
-        motivacion=st.session_state.Q4,
+        motivacion=motivaciones_str,
         toma_decisiones=st.session_state.Q5,
         procesos_criticos=st.session_state.Q6,
         tareas_repetitivas=st.session_state.Q7,
