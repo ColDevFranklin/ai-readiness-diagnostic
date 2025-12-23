@@ -1,13 +1,19 @@
 """
 Formulario de Diagnóstico AI Readiness - Aplicación Principal
-Version: 5.4 PRODUCTION - Fixed: Streamlit selectbox None handling
+Version: 5.5 PRODUCTION - Triple Defense Architecture
 Autor: Andrés - AI Consultant
 
-CHANGELOG v5.4:
-- Fixed: Selectbox initialization with index=None and placeholder
-- Fixed: Validation logic for None values
-- Added: Defensive validation in process_diagnostic()
-- Added: Enhanced logging for debugging
+ARCHITECTURE:
+- Layer 1: Compatibility Layer (init_session_state)
+- Layer 2: UX Layer (collect_prospect_info with explicit placeholders)
+- Layer 3: Validation Layer (process_diagnostic with defensive checks)
+
+CHANGELOG v5.5:
+- Implemented Triple Defense Pattern for state management
+- Added explicit placeholder options in all selectboxes
+- Enhanced validation with granular error reporting
+- Comprehensive logging for observability
+- Universal Streamlit compatibility (>= 1.12)
 """
 
 import streamlit as st
@@ -552,24 +558,27 @@ def load_questions():
         return json.load(f)
 
 # ============================================================================
-# GESTIÓN DE ESTADO
+# GESTIÓN DE ESTADO - LAYER 1: COMPATIBILITY
 # ============================================================================
 
 def init_session_state():
-    """Inicializar TODAS las variables de session_state"""
+    """
+    LAYER 1: Compatibility Layer
+    Inicializar session_state con valores seguros para universal compatibility
+    """
     if 'step' not in st.session_state:
         st.session_state.step = 0
 
-    # ✅ FIXED: Inicializar selectboxes con None para forzar selección explícita
+    # ✅ LAYER 1: String vacío como default (compatible con todas las versiones de Streamlit)
     prospect_defaults = {
         'nombre_empresa': '',
-        'sector': None,             # ✅ None = debe seleccionar
-        'facturacion_rango': None,  # ✅ None = debe seleccionar
-        'empleados_rango': None,    # ✅ None = debe seleccionar
+        'sector': '',
+        'facturacion_rango': '',
+        'empleados_rango': '',
         'contacto_nombre': '',
         'contacto_email': '',
         'contacto_telefono': '',
-        'cargo': None,              # ✅ None = debe seleccionar
+        'cargo': '',
         'ciudad': ''
     }
 
@@ -651,11 +660,14 @@ def show_security_footer():
     """, unsafe_allow_html=True)
 
 # ============================================================================
-# RECOLECCIÓN DE DATOS
+# RECOLECCIÓN DE DATOS - LAYER 2: UX
 # ============================================================================
 
 def collect_prospect_info():
-    """Formulario de información empresarial"""
+    """
+    LAYER 2: UX Layer
+    Formulario con placeholders explícitos para forzar selección
+    """
 
     st.markdown('<div class="section-card">', unsafe_allow_html=True)
     st.markdown('<div class="section-title">📊 Información Empresarial</div>', unsafe_allow_html=True)
@@ -670,34 +682,31 @@ def collect_prospect_info():
             help="Denominación oficial registrada"
         )
 
-        # ✅ FIXED: index=None + placeholder para forzar selección explícita
+        # ✅ LAYER 2: Placeholder explícito como primera opción
+        sectores_con_placeholder = ["-- Seleccione sector --"] + SECTORES
         st.selectbox(
             "Sector Industrial",
-            options=SECTORES,
+            options=sectores_con_placeholder,
             key="sector",
-            help="Categoría principal de actividad económica",
-            index=None,
-            placeholder="Seleccione un sector..."
+            help="Categoría principal de actividad económica"
         )
 
-        # ✅ FIXED: index=None + placeholder para forzar selección explícita
+        # ✅ LAYER 2: Placeholder explícito como primera opción
+        facturacion_con_placeholder = ["-- Seleccione facturación --"] + RANGOS_FACTURACION
         st.selectbox(
             "Facturación Anual",
-            options=RANGOS_FACTURACION,
+            options=facturacion_con_placeholder,
             key="facturacion_rango",
-            help="Ingresos consolidados del último ejercicio fiscal",
-            index=None,
-            placeholder="Seleccione rango de facturación..."
+            help="Ingresos consolidados del último ejercicio fiscal"
         )
 
-        # ✅ FIXED: index=None + placeholder para forzar selección explícita
+        # ✅ LAYER 2: Placeholder explícito como primera opción
+        empleados_con_placeholder = ["-- Seleccione empleados --"] + RANGOS_EMPLEADOS
         st.selectbox(
             "Plantilla de Personal",
-            options=RANGOS_EMPLEADOS,
+            options=empleados_con_placeholder,
             key="empleados_rango",
-            help="Número total de colaboradores activos",
-            index=None,
-            placeholder="Seleccione rango de empleados..."
+            help="Número total de colaboradores activos"
         )
 
         st.text_input(
@@ -729,49 +738,55 @@ def collect_prospect_info():
             help="Número directo (opcional)"
         )
 
-        # ✅ FIXED: index=None + placeholder para forzar selección explícita
+        # ✅ LAYER 2: Placeholder explícito como primera opción
+        cargos_con_placeholder = ["-- Seleccione cargo --"] + CARGOS
         st.selectbox(
             "Posición Ejecutiva",
-            options=CARGOS,
+            options=cargos_con_placeholder,
             key="cargo",
-            help="Rol dentro de la estructura organizacional",
-            index=None,
-            placeholder="Seleccione su cargo..."
+            help="Rol dentro de la estructura organizacional"
         )
 
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # ✅ FIXED: Validación con manejo explícito de None
-    required_fields = [
-        st.session_state.get('nombre_empresa', '').strip(),
-        st.session_state.get('sector'),
-        st.session_state.get('facturacion_rango'),
-        st.session_state.get('empleados_rango'),
-        st.session_state.get('contacto_nombre', '').strip(),
-        st.session_state.get('contacto_email', '').strip(),
-        st.session_state.get('cargo'),
-        st.session_state.get('ciudad', '').strip()
+    # ✅ LAYER 2: Validación con detección de placeholders
+    placeholder_strings = [
+        '-- Seleccione sector --',
+        '-- Seleccione facturación --',
+        '-- Seleccione empleados --',
+        '-- Seleccione cargo --'
     ]
 
-    # ✅ FIXED: Verificar None explícitamente
-    all_filled = all(field is not None and field != '' for field in required_fields)
+    nombre_ok = st.session_state.get('nombre_empresa', '').strip() != ''
+    sector_ok = st.session_state.get('sector', '') not in ['', '-- Seleccione sector --']
+    facturacion_ok = st.session_state.get('facturacion_rango', '') not in ['', '-- Seleccione facturación --']
+    empleados_ok = st.session_state.get('empleados_rango', '') not in ['', '-- Seleccione empleados --']
+    contacto_nombre_ok = st.session_state.get('contacto_nombre', '').strip() != ''
+    email_ok = st.session_state.get('contacto_email', '').strip() != ''
+    cargo_ok = st.session_state.get('cargo', '') not in ['', '-- Seleccione cargo --']
+    ciudad_ok = st.session_state.get('ciudad', '').strip() != ''
+
+    all_filled = all([
+        nombre_ok, sector_ok, facturacion_ok, empleados_ok,
+        contacto_nombre_ok, email_ok, cargo_ok, ciudad_ok
+    ])
 
     email_value = st.session_state.get('contacto_email', '').strip()
     email_valid = validate_email(email_value) if email_value else False
 
     if not all_filled or not email_valid:
         if not all_filled:
-            # ✅ ENHANCED: Mostrar qué campos específicos faltan
-            missing_fields = []
-            field_names = [
-                'Razón Social', 'Sector', 'Facturación', 'Empleados',
-                'Nombre del Ejecutivo', 'Email', 'Cargo', 'Ciudad'
-            ]
-            for i, (field, name) in enumerate(zip(required_fields, field_names)):
-                if field is None or field == '':
-                    missing_fields.append(name)
+            missing = []
+            if not nombre_ok: missing.append("Razón Social")
+            if not sector_ok: missing.append("Sector")
+            if not facturacion_ok: missing.append("Facturación")
+            if not empleados_ok: missing.append("Empleados")
+            if not contacto_nombre_ok: missing.append("Nombre del Ejecutivo")
+            if not email_ok: missing.append("Email")
+            if not cargo_ok: missing.append("Cargo")
+            if not ciudad_ok: missing.append("Ciudad")
 
-            st.warning(f"⚠️ Complete los siguientes campos: {', '.join(missing_fields)}")
+            st.warning(f"⚠️ Complete los siguientes campos: {', '.join(missing)}")
         elif not email_valid:
             st.error("❌ El formato del email no es válido")
 
@@ -851,66 +866,103 @@ def show_diagnostic_questions():
     return q4_valid and radio_valid
 
 # ============================================================================
-# PROCESAMIENTO - TYPE-SAFE
+# PROCESAMIENTO - LAYER 3: VALIDATION
 # ============================================================================
 
 def process_diagnostic():
-    """Procesar evaluación completa - TYPE-SAFE"""
+    """
+    LAYER 3: Validation Layer
+    Validación defensiva exhaustiva antes de procesamiento
+    """
 
     print(f"[PROCESS START] {datetime.now()}")
 
-    # ✅ FIXED: Validación defensiva para evitar None
-    facturacion = st.session_state.get('facturacion_rango')
-    empleados = st.session_state.get('empleados_rango')
-    sector = st.session_state.get('sector')
-    cargo = st.session_state.get('cargo')
+    # ✅ LAYER 3: Extraer valores de session_state
+    facturacion = st.session_state.get('facturacion_rango', '')
+    empleados = st.session_state.get('empleados_rango', '')
+    sector = st.session_state.get('sector', '')
+    cargo = st.session_state.get('cargo', '')
+    nombre_empresa = st.session_state.get('nombre_empresa', '')
+    contacto_email = st.session_state.get('contacto_email', '')
+    ciudad = st.session_state.get('ciudad', '')
 
-    # ✅ CRITICAL: Validar que no sean None antes de continuar
-    if any(v is None for v in [facturacion, empleados, sector, cargo]):
-        st.error("❌ Error crítico: Campos requeridos no inicializados. Refresque la página.")
-        print(f"[ERROR] None values detected:")
-        print(f"  facturacion_rango: {facturacion}")
-        print(f"  empleados_rango: {empleados}")
-        print(f"  sector: {sector}")
-        print(f"  cargo: {cargo}")
-        st.stop()
-
-    # ✅ ENHANCED: Logging completo para debugging
+    # ✅ LAYER 3: Logging pre-validación para observabilidad
     print(f"\n{'='*80}")
-    print(f"[DIAGNOSTIC SESSION STATE]")
+    print(f"[LAYER 3: PRE-VALIDATION]")
     print(f"{'='*80}")
-    print(f"nombre_empresa: '{st.session_state.get('nombre_empresa', 'N/A')}'")
-    print(f"sector: '{sector}'")
-    print(f"facturacion_rango: '{facturacion}'")
-    print(f"empleados_rango: '{empleados}'")
-    print(f"contacto_email: '{st.session_state.get('contacto_email', 'N/A')}'")
-    print(f"cargo: '{cargo}'")
-    print(f"ciudad: '{st.session_state.get('ciudad', 'N/A')}'")
+    print(f"nombre_empresa: '{nombre_empresa}' (len={len(nombre_empresa)})")
+    print(f"sector: '{sector}' (len={len(sector)})")
+    print(f"facturacion_rango: '{facturacion}' (len={len(facturacion)})")
+    print(f"empleados_rango: '{empleados}' (len={len(empleados)})")
+    print(f"contacto_email: '{contacto_email}' (len={len(contacto_email)})")
+    print(f"cargo: '{cargo}' (len={len(cargo)})")
+    print(f"ciudad: '{ciudad}' (len={len(ciudad)})")
     print(f"{'='*80}\n")
 
+    # ✅ LAYER 3: Validación defensiva con detección de placeholders
+    placeholder_strings = [
+        '-- Seleccione sector --',
+        '-- Seleccione facturación --',
+        '-- Seleccione empleados --',
+        '-- Seleccione cargo --'
+    ]
+
+    # Validación granular con mensajes específicos
+    if facturacion in placeholder_strings or facturacion == '':
+        st.error(f"❌ **Facturación no seleccionada**")
+        st.info(f"💡 Valor actual detectado: '{facturacion}'")
+        st.info(f"📋 Por favor, seleccione un rango de facturación válido del dropdown.")
+        print(f"[VALIDATION FAILED] facturacion_rango: '{facturacion}'")
+        st.stop()
+
+    if empleados in placeholder_strings or empleados == '':
+        st.error(f"❌ **Empleados no seleccionado**")
+        st.info(f"💡 Valor actual detectado: '{empleados}'")
+        st.info(f"📋 Por favor, seleccione un rango de empleados válido del dropdown.")
+        print(f"[VALIDATION FAILED] empleados_rango: '{empleados}'")
+        st.stop()
+
+    if sector in placeholder_strings or sector == '':
+        st.error(f"❌ **Sector no seleccionado**")
+        st.info(f"💡 Valor actual detectado: '{sector}'")
+        st.info(f"📋 Por favor, seleccione un sector válido del dropdown.")
+        print(f"[VALIDATION FAILED] sector: '{sector}'")
+        st.stop()
+
+    if cargo in placeholder_strings or cargo == '':
+        st.error(f"❌ **Cargo no seleccionado**")
+        st.info(f"💡 Valor actual detectado: '{cargo}'")
+        st.info(f"📋 Por favor, seleccione un cargo válido del dropdown.")
+        print(f"[VALIDATION FAILED] cargo: '{cargo}'")
+        st.stop()
+
+    # ✅ LAYER 3: Validación pasada
+    print(f"[LAYER 3: VALIDATION PASSED] ✅ All fields validated successfully")
+
+    # Crear ProspectInfo
     prospect_info = ProspectInfo(
-        nombre_empresa=st.session_state.nombre_empresa.strip(),
+        nombre_empresa=nombre_empresa.strip(),
         sector=sector,
         facturacion_rango=facturacion,
         empleados_rango=empleados,
         contacto_nombre=st.session_state.contacto_nombre.strip(),
-        contacto_email=st.session_state.contacto_email.strip(),
+        contacto_email=contacto_email.strip(),
         contacto_telefono=st.session_state.contacto_telefono.strip(),
         cargo=cargo,
-        ciudad=st.session_state.ciudad.strip()
+        ciudad=ciudad.strip()
     )
 
-    # ✅ ENHANCED: Verificación post-creación
+    # ✅ LAYER 3: Verificación post-creación
     print(f"\n{'='*80}")
-    print(f"[VERIFICATION PROSPECT_INFO]")
+    print(f"[LAYER 3: POST-CREATION VERIFICATION]")
     print(f"{'='*80}")
-    print(f"nombre_empresa: '{prospect_info.nombre_empresa}'")
-    print(f"sector: '{prospect_info.sector}'")
-    print(f"facturacion_rango: '{prospect_info.facturacion_rango}'")
-    print(f"empleados_rango: '{prospect_info.empleados_rango}'")
-    print(f"contacto_email: '{prospect_info.contacto_email}'")
-    print(f"cargo: '{prospect_info.cargo}'")
-    print(f"ciudad: '{prospect_info.ciudad}'")
+    print(f"ProspectInfo.nombre_empresa: '{prospect_info.nombre_empresa}'")
+    print(f"ProspectInfo.sector: '{prospect_info.sector}'")
+    print(f"ProspectInfo.facturacion_rango: '{prospect_info.facturacion_rango}'")
+    print(f"ProspectInfo.empleados_rango: '{prospect_info.empleados_rango}'")
+    print(f"ProspectInfo.contacto_email: '{prospect_info.contacto_email}'")
+    print(f"ProspectInfo.cargo: '{prospect_info.cargo}'")
+    print(f"ProspectInfo.ciudad: '{prospect_info.ciudad}'")
     print(f"{'='*80}\n")
 
     # Manejo de frustracion "Otro"
@@ -920,10 +972,6 @@ def process_diagnostic():
 
     # ✅ TYPE-SAFE: motivacion siempre List[str]
     motivacion_list = st.session_state.Q4 if st.session_state.Q4 else []
-
-    print(f"[DEBUG] Q4 type: {type(st.session_state.Q4)}")
-    print(f"[DEBUG] Q4 value: {st.session_state.Q4}")
-    print(f"[DEBUG] motivacion_list: {motivacion_list}")
 
     responses = DiagnosticResponses(
         motivacion=motivacion_list,
@@ -1066,7 +1114,7 @@ def show_confirmation_screen(result):
 # ============================================================================
 
 def main():
-    """Función principal"""
+    """Función principal con orquestación del flujo"""
     init_session_state()
     show_header()
 
