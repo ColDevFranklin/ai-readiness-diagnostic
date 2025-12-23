@@ -1,6 +1,6 @@
 """
 Formulario de Diagnóstico AI Readiness - Aplicación Principal
-Version: 5.2 - FIXED: Type-safe Google Sheets integration
+Version: 5.3 - FIXED: Widget keys alignment with ProspectInfo model
 Autor: Andrés - AI Consultant
 """
 
@@ -554,10 +554,17 @@ def init_session_state():
     if 'step' not in st.session_state:
         st.session_state.step = 0
 
+    # ✅ CORRECCIÓN: Keys deben coincidir exactamente con ProspectInfo
     prospect_defaults = {
-        'nombre_empresa': '', 'sector': '', 'facturacion': '', 'empleados': '',
-        'contacto_nombre': '', 'contacto_email': '', 'contacto_telefono': '',
-        'cargo': '', 'ciudad': ''
+        'nombre_empresa': '',
+        'sector': '',
+        'facturacion_rango': '',  # ✅ CAMBIADO de 'facturacion'
+        'empleados_rango': '',    # ✅ CAMBIADO de 'empleados'
+        'contacto_nombre': '',
+        'contacto_email': '',
+        'contacto_telefono': '',
+        'cargo': '',
+        'ciudad': ''
     }
 
     for key, default in prospect_defaults.items():
@@ -664,17 +671,19 @@ def collect_prospect_info():
             help="Categoría principal de actividad económica"
         )
 
+        # ✅ CORRECCIÓN CRÍTICA: Key debe ser "facturacion_rango"
         st.selectbox(
             "Facturación Anual",
             options=RANGOS_FACTURACION,
-            key="facturacion",
+            key="facturacion_rango",  # ✅ CAMBIADO de "facturacion"
             help="Ingresos consolidados del último ejercicio fiscal"
         )
 
+        # ✅ CORRECCIÓN CRÍTICA: Key debe ser "empleados_rango"
         st.selectbox(
             "Plantilla de Personal",
             options=RANGOS_EMPLEADOS,
-            key="empleados",
+            key="empleados_rango",  # ✅ CAMBIADO de "empleados"
             help="Número total de colaboradores activos"
         )
 
@@ -716,12 +725,12 @@ def collect_prospect_info():
 
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # Validación
+    # ✅ CORRECCIÓN: Validación con keys correctas
     required_fields = [
         st.session_state.nombre_empresa.strip(),
         st.session_state.sector,
-        st.session_state.facturacion,
-        st.session_state.empleados,
+        st.session_state.facturacion_rango,  # ✅ CAMBIADO
+        st.session_state.empleados_rango,    # ✅ CAMBIADO
         st.session_state.contacto_nombre.strip(),
         st.session_state.contacto_email.strip(),
         st.session_state.cargo,
@@ -821,17 +830,27 @@ def process_diagnostic():
 
     print(f"[PROCESS START] {datetime.now()}")
 
+    # ✅ CORRECCIÓN CRÍTICA: Usar las keys correctas
     prospect_info = ProspectInfo(
         nombre_empresa=st.session_state.nombre_empresa.strip(),
         sector=st.session_state.sector,
-        facturacion_rango=st.session_state.facturacion,
-        empleados_rango=st.session_state.empleados,
+        facturacion_rango=st.session_state.facturacion_rango,  # ✅ CAMBIADO
+        empleados_rango=st.session_state.empleados_rango,      # ✅ CAMBIADO
         contacto_nombre=st.session_state.contacto_nombre.strip(),
         contacto_email=st.session_state.contacto_email.strip(),
         contacto_telefono=st.session_state.contacto_telefono.strip(),
         cargo=st.session_state.cargo,
         ciudad=st.session_state.ciudad.strip()
     )
+
+    # ✅ AGREGAR VERIFICACIÓN DEBUG
+    print(f"[VERIFICATION]")
+    print(f"  nombre_empresa: '{prospect_info.nombre_empresa}'")
+    print(f"  sector: '{prospect_info.sector}'")
+    print(f"  facturacion_rango: '{prospect_info.facturacion_rango}'")
+    print(f"  empleados_rango: '{prospect_info.empleados_rango}'")
+    print(f"  contacto_email: '{prospect_info.contacto_email}'")
+    print(f"  ciudad: '{prospect_info.ciudad}'")
 
     # Manejo de frustracion "Otro"
     frustracion = st.session_state.Q12
@@ -846,7 +865,7 @@ def process_diagnostic():
     print(f"[DEBUG] motivacion_list: {motivacion_list}")
 
     responses = DiagnosticResponses(
-        motivacion=motivacion_list,  # ✅ SIEMPRE List[str]
+        motivacion=motivacion_list,
         toma_decisiones=st.session_state.Q5,
         procesos_criticos=st.session_state.Q6,
         tareas_repetitivas=st.session_state.Q7,
