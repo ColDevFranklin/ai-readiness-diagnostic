@@ -1,6 +1,6 @@
 """
-Conector de Google Sheets - Version 3.3 PRODUCTION FINAL
-FIXED: Schema alignment + timestamp format + column mapping
+Conector de Google Sheets - Version 3.4 PRODUCTION FINAL
+FIXED: Circular import removed + Schema alignment + timestamp format
 Autor: Andrés - AI Consultant
 """
 
@@ -62,16 +62,13 @@ class SheetsConnector:
         Formato: DD/MM/YYYY HH:MM:SS (compatible con Sheets locale ES)
         """
         try:
-            # Asegurar que es datetime válido
             if not isinstance(dt, datetime):
                 dt = datetime.now()
 
-            # Formato compatible con Google Sheets ES locale
             formatted = dt.strftime("%d/%m/%Y %H:%M:%S")
             return formatted
         except Exception as e:
             print(f"[TIMESTAMP ERROR] {e}")
-            # Fallback a timestamp actual
             return datetime.now().strftime("%d/%m/%Y %H:%M:%S")
 
     def _safe_list_to_string(self, value: Any, separator: str = ", ") -> str:
@@ -84,7 +81,6 @@ class SheetsConnector:
                 return ""
 
             if isinstance(value, list):
-                # Filtrar elementos vacíos/None y convertir a string
                 clean = [str(x).strip() for x in value if x is not None and str(x).strip()]
                 return separator.join(clean)
 
@@ -131,37 +127,40 @@ class SheetsConnector:
         """
 
         print(f"[RESPONSES] Iniciando guardado...")
+        print(f"[RESPONSES] ProspectInfo snapshot:")
+        print(f"  - nombre_empresa: '{result.prospect_info.nombre_empresa}'")
+        print(f"  - sector: '{result.prospect_info.sector}'")
+        print(f"  - contacto_email: '{result.prospect_info.contacto_email}'")
+        print(f"  - ciudad: '{result.prospect_info.ciudad}'")
 
         worksheet = self._get_or_create_worksheet("responses")
 
-        # ✅ HEADERS DEFINITIVOS - 23 columnas
         expected_headers = [
-            "timestamp",           # 1
-            "diagnostic_id",       # 2
-            "nombre_empresa",      # 3
-            "sector",              # 4
-            "facturacion",         # 5
-            "empleados",           # 6
-            "contacto_nombre",     # 7
-            "contacto_email",      # 8
-            "contacto_telefono",   # 9
-            "cargo",               # 10
-            "ciudad",              # 11
-            "motivacion",          # 12 - STRING con separador ", "
-            "toma_decisiones",     # 13
-            "procesos_criticos",   # 14
-            "tareas_repetitivas",  # 15
-            "compartir_informacion", # 16
-            "equipo_tecnico",      # 17
-            "capacidad_implementacion", # 18
-            "inversion_reciente",  # 19
-            "frustracion_principal", # 20
-            "urgencia",            # 21
-            "proceso_aprobacion",  # 22
-            "presupuesto_rango"    # 23
+            "timestamp",
+            "diagnostic_id",
+            "nombre_empresa",
+            "sector",
+            "facturacion",
+            "empleados",
+            "contacto_nombre",
+            "contacto_email",
+            "contacto_telefono",
+            "cargo",
+            "ciudad",
+            "motivacion",
+            "toma_decisiones",
+            "procesos_criticos",
+            "tareas_repetitivas",
+            "compartir_informacion",
+            "equipo_tecnico",
+            "capacidad_implementacion",
+            "inversion_reciente",
+            "frustracion_principal",
+            "urgencia",
+            "proceso_aprobacion",
+            "presupuesto_rango"
         ]
 
-        # Verificar/crear headers
         existing_headers = worksheet.row_values(1) if worksheet.row_count > 0 else []
 
         if not existing_headers or existing_headers != expected_headers:
@@ -170,37 +169,35 @@ class SheetsConnector:
             worksheet.append_row(expected_headers)
             print(f"[RESPONSES] Headers creados: {len(expected_headers)} columnas")
 
-        # ✅ CONSTRUIR ROW CON VALIDACIÓN ESTRICTA
         timestamp_str = self._format_timestamp(result.created_at)
         motivacion_str = self._safe_list_to_string(result.responses.motivacion)
 
         row = [
-            timestamp_str,                                  # 1
-            result.diagnostic_id,                           # 2
-            result.prospect_info.nombre_empresa,            # 3
-            result.prospect_info.sector,                    # 4
-            result.prospect_info.facturacion_rango,         # 5
-            result.prospect_info.empleados_rango,           # 6
-            result.prospect_info.contacto_nombre,           # 7
-            result.prospect_info.contacto_email,            # 8
-            result.prospect_info.contacto_telefono or "",   # 9
-            result.prospect_info.cargo,                     # 10
-            result.prospect_info.ciudad,                    # 11
-            motivacion_str,                                 # 12
-            result.responses.toma_decisiones or "",         # 13
-            result.responses.procesos_criticos or "",       # 14
-            result.responses.tareas_repetitivas or "",      # 15
-            result.responses.compartir_informacion or "",   # 16
-            result.responses.equipo_tecnico or "",          # 17
-            result.responses.capacidad_implementacion or "", # 18
-            result.responses.inversion_reciente or "",      # 19
-            result.responses.frustracion_principal or "",   # 20
-            result.responses.urgencia or "",                # 21
-            result.responses.proceso_aprobacion or "",      # 22
-            result.responses.presupuesto_rango or ""        # 23
+            timestamp_str,
+            result.diagnostic_id,
+            result.prospect_info.nombre_empresa,
+            result.prospect_info.sector,
+            result.prospect_info.facturacion_rango,
+            result.prospect_info.empleados_rango,
+            result.prospect_info.contacto_nombre,
+            result.prospect_info.contacto_email,
+            result.prospect_info.contacto_telefono or "",
+            result.prospect_info.cargo,
+            result.prospect_info.ciudad,
+            motivacion_str,
+            result.responses.toma_decisiones or "",
+            result.responses.procesos_criticos or "",
+            result.responses.tareas_repetitivas or "",
+            result.responses.compartir_informacion or "",
+            result.responses.equipo_tecnico or "",
+            result.responses.capacidad_implementacion or "",
+            result.responses.inversion_reciente or "",
+            result.responses.frustracion_principal or "",
+            result.responses.urgencia or "",
+            result.responses.proceso_aprobacion or "",
+            result.responses.presupuesto_rango or ""
         ]
 
-        # ✅ VALIDACIÓN CRÍTICA
         if len(row) != len(expected_headers):
             error_msg = f"SCHEMA MISMATCH: Row tiene {len(row)} valores, headers tiene {len(expected_headers)}"
             print(f"[RESPONSES] ❌ {error_msg}")
@@ -209,13 +206,19 @@ class SheetsConnector:
         print(f"[RESPONSES] Row validado: {len(row)} columnas")
         print(f"[RESPONSES] Timestamp: {timestamp_str}")
         print(f"[RESPONSES] Motivación: {motivacion_str}")
+        print(f"[RESPONSES] Row snapshot (primeros 5 valores):")
+        print(f"  [0] timestamp: '{row[0]}'")
+        print(f"  [1] diagnostic_id: '{row[1]}'")
+        print(f"  [2] nombre_empresa: '{row[2]}'")
+        print(f"  [3] sector: '{row[3]}'")
+        print(f"  [4] facturacion: '{row[4]}'")
 
         try:
             worksheet.append_row(row, value_input_option='USER_ENTERED')
             print(f"[RESPONSES] ✅ Guardado exitoso")
         except Exception as e:
             print(f"[RESPONSES] ❌ Error al append row: {str(e)}")
-            print(f"[RESPONSES] Row data: {row}")
+            print(f"[RESPONSES] Row completo: {row}")
             raise
 
     def _save_to_scores(self, result: DiagnosticResult):
@@ -228,47 +231,45 @@ class SheetsConnector:
 
         worksheet = self._get_or_create_worksheet("scores")
 
-        # ✅ HEADERS DEFINITIVOS - 35 columnas
         expected_headers = [
-            "timestamp",                # 1
-            "diagnostic_id",            # 2
-            "nombre_empresa",           # 3
-            "sector",                   # 4
-            "contacto_nombre",          # 5
-            "contacto_email",           # 6
-            "contacto_telefono",        # 7
-            "cargo",                    # 8
-            "ciudad",                   # 9
-            "facturacion",              # 10
-            "empleados",                # 11
-            "score_final",              # 12
-            "tier",                     # 13
-            "confianza_clasificacion",  # 14
-            "madurez_digital_total",    # 15
-            "madurez_decisiones",       # 16
-            "madurez_procesos",         # 17
-            "madurez_integracion",      # 18
-            "madurez_eficiencia",       # 19
-            "capacidad_inversion_total", # 20
-            "capacidad_presupuesto",    # 21
-            "capacidad_historial",      # 22
-            "capacidad_tamano",         # 23
-            "viabilidad_total",         # 24
-            "viabilidad_problema",      # 25
-            "viabilidad_urgencia",      # 26
-            "viabilidad_decision",      # 27
-            "arquetipo_tipo",           # 28
-            "arquetipo_nombre",         # 29
-            "arquetipo_confianza",      # 30
-            "servicio_sugerido",        # 31
-            "monto_min",                # 32
-            "monto_max",                # 33
-            "probabilidad_cierre",      # 34
-            "quick_wins_count",         # 35
-            "red_flags_count"           # 36
+            "timestamp",
+            "diagnostic_id",
+            "nombre_empresa",
+            "sector",
+            "contacto_nombre",
+            "contacto_email",
+            "contacto_telefono",
+            "cargo",
+            "ciudad",
+            "facturacion",
+            "empleados",
+            "score_final",
+            "tier",
+            "confianza_clasificacion",
+            "madurez_digital_total",
+            "madurez_decisiones",
+            "madurez_procesos",
+            "madurez_integracion",
+            "madurez_eficiencia",
+            "capacidad_inversion_total",
+            "capacidad_presupuesto",
+            "capacidad_historial",
+            "capacidad_tamano",
+            "viabilidad_total",
+            "viabilidad_problema",
+            "viabilidad_urgencia",
+            "viabilidad_decision",
+            "arquetipo_tipo",
+            "arquetipo_nombre",
+            "arquetipo_confianza",
+            "servicio_sugerido",
+            "monto_min",
+            "monto_max",
+            "probabilidad_cierre",
+            "quick_wins_count",
+            "red_flags_count"
         ]
 
-        # Verificar/crear headers
         existing_headers = worksheet.row_values(1) if worksheet.row_count > 0 else []
 
         if not existing_headers or existing_headers != expected_headers:
@@ -277,51 +278,49 @@ class SheetsConnector:
             worksheet.append_row(expected_headers)
             print(f"[SCORES] Headers creados: {len(expected_headers)} columnas")
 
-        # ✅ SAFE ACCESS con valores default
         timestamp_str = self._format_timestamp(result.created_at)
         confianza_clasificacion = getattr(result.score, 'confianza_clasificacion', 0.0)
         probabilidad_cierre = getattr(result.reunion_prep, 'probabilidad_cierre', 50)
 
         row = [
-            timestamp_str,                                      # 1
-            result.diagnostic_id,                               # 2
-            result.prospect_info.nombre_empresa,                # 3
-            result.prospect_info.sector,                        # 4
-            result.prospect_info.contacto_nombre,               # 5
-            result.prospect_info.contacto_email,                # 6
-            result.prospect_info.contacto_telefono or "",       # 7
-            result.prospect_info.cargo,                         # 8
-            result.prospect_info.ciudad,                        # 9
-            result.prospect_info.facturacion_rango,             # 10
-            result.prospect_info.empleados_rango,               # 11
-            result.score.score_final,                           # 12
-            result.score.tier.value,                            # 13
-            confianza_clasificacion,                            # 14
-            result.score.madurez_digital.score_total,           # 15
-            result.score.madurez_digital.decisiones_basadas_datos, # 16
-            result.score.madurez_digital.procesos_estandarizados,  # 17
-            result.score.madurez_digital.sistemas_integrados,      # 18
-            result.score.madurez_digital.eficiencia_operativa,     # 19
-            result.score.capacidad_inversion.score_total,          # 20
-            result.score.capacidad_inversion.presupuesto_disponible, # 21
-            result.score.capacidad_inversion.historial_inversion,    # 22
-            result.score.capacidad_inversion.tamano_empresa,         # 23
-            result.score.viabilidad_comercial.score_total,           # 24
-            result.score.viabilidad_comercial.problema_claro,        # 25
-            result.score.viabilidad_comercial.urgencia_real,         # 26
-            result.score.viabilidad_comercial.poder_decision,        # 27
-            result.arquetipo.tipo,                                   # 28
-            result.arquetipo.nombre,                                 # 29
-            result.arquetipo.confianza,                              # 30
-            result.servicio_sugerido,                                # 31
-            result.monto_sugerido_min,                               # 32
-            result.monto_sugerido_max,                               # 33
-            probabilidad_cierre,                                     # 34
-            len(result.quick_wins),                                  # 35
-            len(result.red_flags)                                    # 36
+            timestamp_str,
+            result.diagnostic_id,
+            result.prospect_info.nombre_empresa,
+            result.prospect_info.sector,
+            result.prospect_info.contacto_nombre,
+            result.prospect_info.contacto_email,
+            result.prospect_info.contacto_telefono or "",
+            result.prospect_info.cargo,
+            result.prospect_info.ciudad,
+            result.prospect_info.facturacion_rango,
+            result.prospect_info.empleados_rango,
+            result.score.score_final,
+            result.score.tier.value,
+            confianza_clasificacion,
+            result.score.madurez_digital.score_total,
+            result.score.madurez_digital.decisiones_basadas_datos,
+            result.score.madurez_digital.procesos_estandarizados,
+            result.score.madurez_digital.sistemas_integrados,
+            result.score.madurez_digital.eficiencia_operativa,
+            result.score.capacidad_inversion.score_total,
+            result.score.capacidad_inversion.presupuesto_disponible,
+            result.score.capacidad_inversion.historial_inversion,
+            result.score.capacidad_inversion.tamano_empresa,
+            result.score.viabilidad_comercial.score_total,
+            result.score.viabilidad_comercial.problema_claro,
+            result.score.viabilidad_comercial.urgencia_real,
+            result.score.viabilidad_comercial.poder_decision,
+            result.arquetipo.tipo,
+            result.arquetipo.nombre,
+            result.arquetipo.confianza,
+            result.servicio_sugerido,
+            result.monto_sugerido_min,
+            result.monto_sugerido_max,
+            probabilidad_cierre,
+            len(result.quick_wins),
+            len(result.red_flags)
         ]
 
-        # ✅ VALIDACIÓN CRÍTICA
         if len(row) != len(expected_headers):
             error_msg = f"SCHEMA MISMATCH: Row tiene {len(row)} valores, headers tiene {len(expected_headers)}"
             print(f"[SCORES] ❌ {error_msg}")
