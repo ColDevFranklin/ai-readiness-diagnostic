@@ -1,27 +1,36 @@
 """
 Formulario de Diagnóstico AI Readiness - Aplicación Principal
-Version: 5.6 PRODUCTION - State Persistence Fix
+Version: 5.7 PRODUCTION - Micro-optimizations Layer
 Autor: Andrés - AI Consultant
 
 ARCHITECTURE:
 - Layer 1: State Initialization with Index Mapping
 - Layer 2: Persistent Widget Binding
 - Layer 3: Validation with State Recovery
+- Layer 4: Micro-optimizations (NEW)
+  * Idempotency protection
+  * Circuit breaker pattern
+  * Staleness detection
 
-CHANGELOG v5.6:
-- Fixed state persistence across rerun cycles
-- Implemented index-based selectbox initialization
-- Enhanced defensive validation with state recovery
-- Removed placeholder strings (anti-pattern in Streamlit)
+CHANGELOG v5.7:
+- Added submission hash for idempotency (prevents duplicates)
+- Implemented exponential backoff with circuit breaker for Google Sheets API
+- Added staleness indicator for data freshness visibility
+- Enhanced error recovery with local queue fallback
 """
 
 import streamlit as st
 import json
 import re
+import hashlib
+import time
 from datetime import datetime
 from pathlib import Path
 import sys
 import traceback
+from typing import Optional
+from dataclasses import dataclass
+import pickle
 
 # Agregar path del proyecto
 sys.path.append(str(Path(__file__).parent.parent))
@@ -33,6 +42,206 @@ from core.classifier import ArchetypeClassifier, InsightGenerator
 from integrations.sheets_connector import SheetsConnector
 from integrations.pdf_generator import PDFGenerator
 from integrations.email_sender import EmailSender
+
+# ============================================================================
+# MICRO-FUNCIÓN #1: IDEMPOTENCY PROTECTION
+# ============================================================================
+
+def generate_submission_hash(contact_email: str) -> str:
+    """
+    Genera hash único basado en email + timestamp (5min window)
+    Previene duplicate submissions por doble-click o mala conexión
+
+    Returns:
+        Hash de 16 caracteres único por ventana de 5 minutos
+    """
+    window = int(time.time() / 300)  # 5min buckets
+    key = f"{contact_email}:{window}"
+    return hashlib.sha256(key.encode()).hexdigest()[:16]
+
+def check_submission_idempotency(email: str) -> bool:
+    """
+    Verifica si esta submission ya fue procesada en los últimos 5 minutos
+
+    Returns:
+        True si es seguro procesar, False si es duplicado
+    """
+    if 'processed_hashes' not in st.session_state:
+        st.session_state.processed_hashes = set()
+
+    submission_hash = generate_submission_hash(email)
+
+    if submission_hash in st.session_state.processed_hashes:
+        return False
+
+    st.session_state.processed_hashes.add(submission_hash)
+
+    # Cleanup old hashes (mantener solo últimos 20)
+    if len(st.session_state.processed_hashes) > 20:
+        st.session_state.processed_hashes = set(list(st.session_state.processed_hashes)[-20:])
+
+    return True
+
+# ============================================================================
+# MICRO-FUNCIÓN #2: CIRCUIT BREAKER PATTERN
+# ============================================================================
+
+@dataclass
+class CircuitBreakerState:
+    failures: int = 0
+    last_failure_time: Optional[float] = None
+    state: str = "CLOSED"  # CLOSED, OPEN, HALF_OPEN
+    max_failures: int = 3
+    timeout: int = 60  # seconds
+
+class SheetsCircuitBreaker:
+    """
+    Circuit breaker para Google Sheets API
+    Protege contra rate limiting y cascading failures
+    """
+
+    def __init__(self):
+        if 'circuit_breaker' not in st.session_state:
+            st.session_state.circuit_breaker = CircuitBreakerState()
+        self.state = st.session_state.circuit_breaker
+
+    def can_attempt(self) -> tuple[bool, str]:
+        """
+        Verifica si podemos intentar llamada a API
+
+        Returns:
+            (puede_intentar, mensaje_error)
+        """
+        if self.state.state == "CLOSED":
+            return True, ""
+
+        if self.state.state == "OPEN":
+            if time.time() - self.state.last_failure_time > self.state.timeout:
+                self.state.state = "HALF_OPEN"
+                return True, ""
+            return False, f"Google Sheets API temporalmente no disponible. Reintente en {int(self.state.timeout - (time.time() - self.state.last_failure_time))}s"
+
+        # HALF_OPEN state
+        return True, ""
+
+    def record_success(self):
+        """Registra llamada exitosa y resetea estado"""
+        self.state.failures = 0
+        self.state.state = "CLOSED"
+        self.state.last_failure_time = None
+
+    def record_failure(self, error: Exception):
+        """Registra falla y actualiza estado del circuito"""
+        self.state.failures += 1
+        self.state.last_failure_time = time.time()
+
+        if self.state.failures >= self.state.max_failures:
+            self.state.state = "OPEN"
+            print(f"[CIRCUIT BREAKER] Estado OPEN - {self.state.failures} fallos consecutivos")
+
+    def save_to_local_queue(self, result: DiagnosticResult):
+        """
+        Fallback: guarda resultado en local queue para retry manual
+        """
+        queue_path = Path(__file__).parent.parent / "data" / "failed_submissions.pkl"
+        queue_path.parent.mkdir(exist_ok=True)
+
+        queue = []
+        if queue_path.exists():
+            with open(queue_path, 'rb') as f:
+                queue = pickle.load(f)
+
+        queue.append({
+            'timestamp': datetime.now().isoformat(),
+            'result': result,
+            'hash': generate_submission_hash(result.prospect_info.contacto_email)
+        })
+
+        with open(queue_path, 'wb') as f:
+            pickle.dump(queue, f)
+
+        print(f"[CIRCUIT BREAKER] Guardado en local queue: {result.prospect_info.nombre_empresa}")
+
+def safe_sheets_save(result: DiagnosticResult) -> tuple[bool, str]:
+    """
+    Wrapper con circuit breaker y exponential backoff
+
+    Returns:
+        (success, error_message)
+    """
+    breaker = SheetsCircuitBreaker()
+
+    can_attempt, error_msg = breaker.can_attempt()
+    if not can_attempt:
+        breaker.save_to_local_queue(result)
+        return False, error_msg
+
+    max_retries = 3
+    base_delay = 2
+
+    for attempt in range(max_retries):
+        try:
+            connector = SheetsConnector()
+            connector.save_diagnostic(result)
+            breaker.record_success()
+            return True, ""
+
+        except Exception as e:
+            error_str = str(e)
+            print(f"[SHEETS] Intento {attempt + 1}/{max_retries} falló: {error_str}")
+
+            if "429" in error_str or "quota" in error_str.lower():
+                breaker.record_failure(e)
+
+                if attempt < max_retries - 1:
+                    delay = base_delay * (2 ** attempt)
+                    print(f"[SHEETS] Rate limit - esperando {delay}s antes de reintentar")
+                    time.sleep(delay)
+                else:
+                    breaker.save_to_local_queue(result)
+                    return False, "Google Sheets API rate limit excedido. Datos guardados localmente para procesamiento posterior."
+            else:
+                breaker.record_failure(e)
+                return False, f"Error en Google Sheets: {error_str}"
+
+    return False, "Máximo de reintentos alcanzado"
+
+# ============================================================================
+# MICRO-FUNCIÓN #3: STALENESS DETECTION
+# ============================================================================
+
+def show_data_freshness_indicator():
+    """
+    Indicador visual de frescura de datos
+    Ayuda a tomar decisiones informadas sobre timing de contacto
+    """
+    if 'last_submission_time' not in st.session_state:
+        return
+
+    last_submit = st.session_state.last_submission_time
+    staleness_seconds = (datetime.now() - last_submit).total_seconds()
+
+    if staleness_seconds < 60:
+        status_icon = "🟢"
+        status_text = f"Procesado hace {int(staleness_seconds)}s"
+        status_color = "success"
+    elif staleness_seconds < 300:
+        status_icon = "🟡"
+        status_text = f"Procesado hace {int(staleness_seconds/60)} min"
+        status_color = "warning"
+    else:
+        status_icon = "🔴"
+        status_text = f"Procesado hace {int(staleness_seconds/60)} min"
+        status_color = "error"
+
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        if status_color == "success":
+            st.success(f"{status_icon} {status_text}")
+        elif status_color == "warning":
+            st.warning(f"{status_icon} {status_text}")
+        else:
+            st.error(f"{status_icon} {status_text}")
 
 # ============================================================================
 # CONFIGURACIÓN DE PÁGINA
@@ -580,7 +789,6 @@ def init_session_state():
     if 'step' not in st.session_state:
         st.session_state.step = 0
 
-    # Prospect info - None permite detectar "no seleccionado" vs "seleccionado"
     prospect_defaults = {
         'nombre_empresa': None,
         'sector': None,
@@ -597,7 +805,6 @@ def init_session_state():
         if key not in st.session_state:
             st.session_state[key] = default
 
-    # Diagnostic responses
     diagnostic_defaults = {
         'Q4': [], 'Q5': None, 'Q6': None, 'Q7': None, 'Q8': None,
         'Q9': None, 'Q10': None, 'Q11': None, 'Q12': None, 'Q12_otro': '',
@@ -687,7 +894,6 @@ def collect_prospect_info():
     col1, col2 = st.columns(2, gap="medium")
 
     with col1:
-        # Text inputs mantienen su valor automáticamente en session_state
         nombre_empresa = st.text_input(
             "Razón Social",
             value=st.session_state.nombre_empresa if st.session_state.nombre_empresa else "",
@@ -696,7 +902,6 @@ def collect_prospect_info():
         )
         st.session_state.nombre_empresa = nombre_empresa
 
-        # Selectbox con index basado en valor actual en session_state
         sector_index = get_index_safe(SECTORES, st.session_state.sector, 0)
         sector = st.selectbox(
             "Sector Industrial",
@@ -768,7 +973,6 @@ def collect_prospect_info():
 
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # Validación: campos requeridos deben tener valor no-None y no-empty
     nombre_ok = nombre_empresa and nombre_empresa.strip() != ''
     sector_ok = sector and sector.strip() != ''
     facturacion_ok = facturacion and facturacion.strip() != ''
@@ -809,7 +1013,6 @@ def show_diagnostic_questions():
     """Cuestionario de evaluación"""
     questions = load_questions()
 
-    # Bloque 1
     st.markdown('<div class="section-card">', unsafe_allow_html=True)
     st.markdown('<div class="section-title">🎯 Objetivos Estratégicos</div>', unsafe_allow_html=True)
 
@@ -823,7 +1026,6 @@ def show_diagnostic_questions():
 
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # Bloque 2
     st.markdown('<div class="section-card">', unsafe_allow_html=True)
     st.markdown('<div class="section-title">🔬 Diagnóstico Operacional</div>', unsafe_allow_html=True)
 
@@ -856,7 +1058,6 @@ def show_diagnostic_questions():
 
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # Bloque 3
     st.markdown('<div class="section-card">', unsafe_allow_html=True)
     st.markdown('<div class="section-title">💼 Viabilidad Financiera</div>', unsafe_allow_html=True)
 
@@ -869,7 +1070,6 @@ def show_diagnostic_questions():
 
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # Validación
     q4_valid = len(st.session_state.get("Q4", [])) > 0
     radio_questions = ["Q5", "Q6", "Q7", "Q8", "Q9", "Q10", "Q11", "Q12", "Q13", "Q14", "Q15"]
     radio_valid = all(st.session_state.get(q) is not None for q in radio_questions)
@@ -887,7 +1087,6 @@ def process_diagnostic():
 
     print(f"[PROCESS START] {datetime.now()}")
 
-    # Extraer valores directamente (ya validados en Layer 2)
     facturacion = st.session_state.facturacion_rango
     empleados = st.session_state.empleados_rango
     sector = st.session_state.sector
@@ -896,7 +1095,6 @@ def process_diagnostic():
     contacto_email = st.session_state.contacto_email
     ciudad = st.session_state.ciudad
 
-    # Logging para observabilidad
     print(f"\n{'='*80}")
     print(f"[LAYER 3: VALIDATION]")
     print(f"{'='*80}")
@@ -909,7 +1107,6 @@ def process_diagnostic():
     print(f"ciudad: '{ciudad}'")
     print(f"{'='*80}\n")
 
-    # Validación defensiva final (should never trigger si Layer 2 funciona)
     if not all([facturacion, empleados, sector, cargo, nombre_empresa, contacto_email, ciudad]):
         st.error("❌ Error crítico: Datos incompletos detectados")
         print(f"[VALIDATION FAILED] Missing data detected")
@@ -917,7 +1114,6 @@ def process_diagnostic():
 
     print(f"[LAYER 3: VALIDATION PASSED] ✅")
 
-    # Crear ProspectInfo
     prospect_info = ProspectInfo(
         nombre_empresa=nombre_empresa.strip(),
         sector=sector,
@@ -930,7 +1126,6 @@ def process_diagnostic():
         ciudad=ciudad.strip()
     )
 
-    # Manejo de frustración "Otro"
     frustracion = st.session_state.Q12
     if frustracion == "Otro":
         frustracion = st.session_state.get("Q12_otro", "Otro")
@@ -997,9 +1192,11 @@ def process_diagnostic():
 # ============================================================================
 
 def show_confirmation_screen(result):
-    """Pantalla de resultados"""
+    """Pantalla de resultados con staleness indicator"""
     st.markdown('<div class="section-card">', unsafe_allow_html=True)
     st.markdown("## ✅ Evaluación Completada")
+
+    show_data_freshness_indicator()
 
     email_sent = st.session_state.get("email_sent", False)
 
@@ -1078,7 +1275,7 @@ def show_confirmation_screen(result):
 # ============================================================================
 
 def main():
-    """Función principal con orquestación del flujo"""
+    """Función principal con orquestación del flujo + micro-optimizations"""
     init_session_state()
     show_header()
 
@@ -1093,6 +1290,12 @@ def main():
         show_progress_bar(1, 2)
         if show_diagnostic_questions():
             if st.button("Procesar Análisis"):
+
+                # MICRO-FUNCIÓN #1: Idempotency check
+                if not check_submission_idempotency(st.session_state.contacto_email):
+                    st.warning("⚠️ Este diagnóstico ya fue procesado recientemente (últimos 5 minutos). Espere antes de reenviar.")
+                    st.stop()
+
                 with st.spinner("Procesando evaluación estratégica..."):
 
                     print(f"\n{'='*80}")
@@ -1101,18 +1304,18 @@ def main():
 
                     result = process_diagnostic()
 
-                    save_success = False
-                    try:
-                        print(f"[SHEETS] Intentando guardar...")
-                        connector = SheetsConnector()
-                        connector.save_diagnostic(result)
-                        save_success = True
+                    # MICRO-FUNCIÓN #2: Circuit breaker con exponential backoff
+                    save_success, error_msg = safe_sheets_save(result)
+
+                    if save_success:
                         st.success("✅ Datos almacenados en Google Sheets")
                         print(f"[SHEETS] ✅ Guardado exitoso")
-                    except Exception as e:
-                        st.error(f"❌ Error crítico en Google Sheets: {str(e)}")
-                        print(f"[SHEETS] ❌ ERROR: {str(e)}")
-                        print(traceback.format_exc())
+                    else:
+                        st.error(f"❌ {error_msg}")
+                        print(f"[SHEETS] ❌ ERROR: {error_msg}")
+
+                        if "rate limit" in error_msg.lower() or "temporalmente no disponible" in error_msg.lower():
+                            st.info("💾 Sus datos fueron guardados localmente. El equipo procesará su evaluación manualmente dentro de 24h.")
 
                         if st.button("🔄 Reintentar Guardado"):
                             st.rerun()
@@ -1152,6 +1355,9 @@ def main():
                         st.session_state.email_sent = email_success
                         st.session_state.pdf_generated = pdf_success
                         st.session_state.step = 2
+
+                        # MICRO-FUNCIÓN #3: Timestamp para staleness detection
+                        st.session_state.last_submission_time = datetime.now()
 
                         print(f"\n{'='*80}")
                         print(f"[DIAGNOSTIC END] {datetime.now()}")
