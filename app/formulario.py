@@ -1,6 +1,7 @@
 """
 Formulario de Diagnóstico AI Readiness - Aplicación Principal
-Version: 5.1 - FIXED: Google Sheets Integration
+Version: 5.2 - FIXED: Type-safe Google Sheets integration
+Autor: Andrés - AI Consultant
 """
 
 import streamlit as st
@@ -812,11 +813,14 @@ def show_diagnostic_questions():
     return q4_valid and radio_valid
 
 # ============================================================================
-# PROCESAMIENTO - FIX CRÍTICO APLICADO AQUÍ
+# PROCESAMIENTO - TYPE-SAFE
 # ============================================================================
 
 def process_diagnostic():
-    """Procesar evaluación completa - FIXED: Schema alignment"""
+    """Procesar evaluación completa - TYPE-SAFE"""
+
+    print(f"[PROCESS START] {datetime.now()}")
+
     prospect_info = ProspectInfo(
         nombre_empresa=st.session_state.nombre_empresa.strip(),
         sector=st.session_state.sector,
@@ -834,9 +838,15 @@ def process_diagnostic():
     if frustracion == "Otro":
         frustracion = st.session_state.get("Q12_otro", "Otro")
 
-    # ✅ FIX CRÍTICO: motivacion debe ser List[str], NO string
+    # ✅ TYPE-SAFE: motivacion siempre List[str]
+    motivacion_list = st.session_state.Q4 if st.session_state.Q4 else []
+
+    print(f"[DEBUG] Q4 type: {type(st.session_state.Q4)}")
+    print(f"[DEBUG] Q4 value: {st.session_state.Q4}")
+    print(f"[DEBUG] motivacion_list: {motivacion_list}")
+
     responses = DiagnosticResponses(
-        motivacion=st.session_state.Q4 if st.session_state.Q4 else [],  # ✅ CORRECTO
+        motivacion=motivacion_list,  # ✅ SIEMPRE List[str]
         toma_decisiones=st.session_state.Q5,
         procesos_criticos=st.session_state.Q6,
         tareas_repetitivas=st.session_state.Q7,
@@ -885,6 +895,8 @@ def process_diagnostic():
         monto_sugerido_max=monto_max,
         reunion_prep=reunion_prep
     )
+
+    print(f"[PROCESS END] Result created for {prospect_info.nombre_empresa}")
 
     return result
 
@@ -990,18 +1002,27 @@ def main():
         if show_diagnostic_questions():
             if st.button("Procesar Análisis"):
                 with st.spinner("Procesando evaluación estratégica..."):
+
+                    print(f"\n{'='*80}")
+                    print(f"[DIAGNOSTIC START] {datetime.now()}")
+                    print(f"{'='*80}\n")
+
                     result = process_diagnostic()
 
                     save_success = False
                     try:
+                        print(f"[SHEETS] Intentando guardar...")
                         connector = SheetsConnector()
                         connector.save_diagnostic(result)
                         save_success = True
-                        st.success("✅ Datos almacenados")
+                        st.success("✅ Datos almacenados en Google Sheets")
+                        print(f"[SHEETS] ✅ Guardado exitoso")
                     except Exception as e:
-                        st.error(f"❌ Error crítico: {e}")
-                        print(f"[ERROR SHEETS] {datetime.now()}: {traceback.format_exc()}")
-                        if st.button("🔄 Reintentar"):
+                        st.error(f"❌ Error crítico en Google Sheets: {str(e)}")
+                        print(f"[SHEETS] ❌ ERROR: {str(e)}")
+                        print(traceback.format_exc())
+
+                        if st.button("🔄 Reintentar Guardado"):
                             st.rerun()
                         st.stop()
 
@@ -1009,30 +1030,44 @@ def main():
                     pdf_path = None
                     if save_success:
                         try:
+                            print(f"[PDF] Generando...")
                             pdf_gen = PDFGenerator()
                             pdf_path = pdf_gen.generate_prospect_pdf(result)
                             pdf_success = True
                             st.success("✅ PDF generado")
+                            print(f"[PDF] ✅ Generado: {pdf_path}")
                         except Exception as e:
-                            st.warning(f"⚠️ PDF no disponible: {e}")
-                            print(f"[ERROR PDF] {datetime.now()}: {traceback.format_exc()}")
+                            st.warning(f"⚠️ PDF no disponible: {str(e)}")
+                            print(f"[PDF] ⚠️ ERROR: {str(e)}")
+                            print(traceback.format_exc())
 
                     email_success = False
                     if save_success:
                         try:
+                            print(f"[EMAIL] Enviando...")
                             email_sender = EmailSender()
                             email_sender.send_confirmation_email(result, pdf_path)
                             email_success = True
-                            st.success(f"✅ Email enviado")
+                            st.success(f"✅ Email enviado a {result.prospect_info.contacto_email}")
+                            print(f"[EMAIL] ✅ Enviado a {result.prospect_info.contacto_email}")
                         except Exception as e:
-                            st.warning(f"⚠️ Email no enviado: {e}")
-                            print(f"[ERROR EMAIL] {datetime.now()}: {traceback.format_exc()}")
+                            st.warning(f"⚠️ Email no enviado: {str(e)}")
+                            print(f"[EMAIL] ⚠️ ERROR: {str(e)}")
+                            print(traceback.format_exc())
 
                     if save_success:
                         st.session_state.result = result
                         st.session_state.email_sent = email_success
                         st.session_state.pdf_generated = pdf_success
                         st.session_state.step = 2
+
+                        print(f"\n{'='*80}")
+                        print(f"[DIAGNOSTIC END] {datetime.now()}")
+                        print(f"  Sheets: {'✅' if save_success else '❌'}")
+                        print(f"  PDF: {'✅' if pdf_success else '❌'}")
+                        print(f"  Email: {'✅' if email_success else '❌'}")
+                        print(f"{'='*80}\n")
+
                         st.rerun()
         else:
             st.warning("⚠️ Complete todas las preguntas para continuar")
