@@ -1,19 +1,18 @@
 """
 Formulario de Diagnóstico AI Readiness - Aplicación Principal
-Version: 5.5 PRODUCTION - Triple Defense Architecture
+Version: 5.6 PRODUCTION - State Persistence Fix
 Autor: Andrés - AI Consultant
 
 ARCHITECTURE:
-- Layer 1: Compatibility Layer (init_session_state)
-- Layer 2: UX Layer (collect_prospect_info with explicit placeholders)
-- Layer 3: Validation Layer (process_diagnostic with defensive checks)
+- Layer 1: State Initialization with Index Mapping
+- Layer 2: Persistent Widget Binding
+- Layer 3: Validation with State Recovery
 
-CHANGELOG v5.5:
-- Implemented Triple Defense Pattern for state management
-- Added explicit placeholder options in all selectboxes
-- Enhanced validation with granular error reporting
-- Comprehensive logging for observability
-- Universal Streamlit compatibility (>= 1.12)
+CHANGELOG v5.6:
+- Fixed state persistence across rerun cycles
+- Implemented index-based selectbox initialization
+- Enhanced defensive validation with state recovery
+- Removed placeholder strings (anti-pattern in Streamlit)
 """
 
 import streamlit as st
@@ -546,6 +545,18 @@ def validate_email(email: str) -> bool:
     pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
     return re.match(pattern, email) is not None
 
+def get_index_safe(options_list, value, default_index=0):
+    """
+    Obtener índice de forma segura para selectbox.
+    Retorna default_index si value no está en la lista.
+    """
+    try:
+        if value and value in options_list:
+            return options_list.index(value)
+        return default_index
+    except (ValueError, TypeError):
+        return default_index
+
 # ============================================================================
 # FUNCIONES DE CARGA
 # ============================================================================
@@ -558,34 +569,35 @@ def load_questions():
         return json.load(f)
 
 # ============================================================================
-# GESTIÓN DE ESTADO - LAYER 1: COMPATIBILITY
+# GESTIÓN DE ESTADO - LAYER 1: INITIALIZATION WITH DEFAULTS
 # ============================================================================
 
 def init_session_state():
     """
-    LAYER 1: Compatibility Layer
-    Inicializar session_state con valores seguros para universal compatibility
+    LAYER 1: State Initialization Layer
+    Inicializar session_state con valores None para permitir validación explícita
     """
     if 'step' not in st.session_state:
         st.session_state.step = 0
 
-    # ✅ LAYER 1: String vacío como default (compatible con todas las versiones de Streamlit)
+    # Prospect info - None permite detectar "no seleccionado" vs "seleccionado"
     prospect_defaults = {
-        'nombre_empresa': '',
-        'sector': '',
-        'facturacion_rango': '',
-        'empleados_rango': '',
-        'contacto_nombre': '',
-        'contacto_email': '',
-        'contacto_telefono': '',
-        'cargo': '',
-        'ciudad': ''
+        'nombre_empresa': None,
+        'sector': None,
+        'facturacion_rango': None,
+        'empleados_rango': None,
+        'contacto_nombre': None,
+        'contacto_email': None,
+        'contacto_telefono': None,
+        'cargo': None,
+        'ciudad': None
     }
 
     for key, default in prospect_defaults.items():
         if key not in st.session_state:
             st.session_state[key] = default
 
+    # Diagnostic responses
     diagnostic_defaults = {
         'Q4': [], 'Q5': None, 'Q6': None, 'Q7': None, 'Q8': None,
         'Q9': None, 'Q10': None, 'Q11': None, 'Q12': None, 'Q12_otro': '',
@@ -660,13 +672,13 @@ def show_security_footer():
     """, unsafe_allow_html=True)
 
 # ============================================================================
-# RECOLECCIÓN DE DATOS - LAYER 2: UX
+# RECOLECCIÓN DE DATOS - LAYER 2: PERSISTENT WIDGET BINDING
 # ============================================================================
 
 def collect_prospect_info():
     """
-    LAYER 2: UX Layer
-    Formulario con placeholders explícitos para forzar selección
+    LAYER 2: UX Layer con persistencia de estado
+    Utiliza index parameter para mantener selección en reruns
     """
 
     st.markdown('<div class="section-card">', unsafe_allow_html=True)
@@ -675,104 +687,103 @@ def collect_prospect_info():
     col1, col2 = st.columns(2, gap="medium")
 
     with col1:
-        st.text_input(
+        # Text inputs mantienen su valor automáticamente en session_state
+        nombre_empresa = st.text_input(
             "Razón Social",
-            key="nombre_empresa",
+            value=st.session_state.nombre_empresa if st.session_state.nombre_empresa else "",
             placeholder="Ingrese el nombre legal de la empresa",
             help="Denominación oficial registrada"
         )
+        st.session_state.nombre_empresa = nombre_empresa
 
-        # ✅ LAYER 2: Placeholder explícito como primera opción
-        sectores_con_placeholder = ["-- Seleccione sector --"] + SECTORES
-        st.selectbox(
+        # Selectbox con index basado en valor actual en session_state
+        sector_index = get_index_safe(SECTORES, st.session_state.sector, 0)
+        sector = st.selectbox(
             "Sector Industrial",
-            options=sectores_con_placeholder,
-            key="sector",
+            options=SECTORES,
+            index=sector_index,
             help="Categoría principal de actividad económica"
         )
+        st.session_state.sector = sector
 
-        # ✅ LAYER 2: Placeholder explícito como primera opción
-        facturacion_con_placeholder = ["-- Seleccione facturación --"] + RANGOS_FACTURACION
-        st.selectbox(
+        facturacion_index = get_index_safe(RANGOS_FACTURACION, st.session_state.facturacion_rango, 0)
+        facturacion = st.selectbox(
             "Facturación Anual",
-            options=facturacion_con_placeholder,
-            key="facturacion_rango",
+            options=RANGOS_FACTURACION,
+            index=facturacion_index,
             help="Ingresos consolidados del último ejercicio fiscal"
         )
+        st.session_state.facturacion_rango = facturacion
 
-        # ✅ LAYER 2: Placeholder explícito como primera opción
-        empleados_con_placeholder = ["-- Seleccione empleados --"] + RANGOS_EMPLEADOS
-        st.selectbox(
+        empleados_index = get_index_safe(RANGOS_EMPLEADOS, st.session_state.empleados_rango, 0)
+        empleados = st.selectbox(
             "Plantilla de Personal",
-            options=empleados_con_placeholder,
-            key="empleados_rango",
+            options=RANGOS_EMPLEADOS,
+            index=empleados_index,
             help="Número total de colaboradores activos"
         )
+        st.session_state.empleados_rango = empleados
 
-        st.text_input(
+        ciudad = st.text_input(
             "Ubicación Principal",
-            key="ciudad",
+            value=st.session_state.ciudad if st.session_state.ciudad else "",
             placeholder="Ciudad de sede central",
             help="Localización de oficinas corporativas"
         )
+        st.session_state.ciudad = ciudad
 
     with col2:
-        st.text_input(
+        contacto_nombre = st.text_input(
             "Nombre del Ejecutivo",
-            key="contacto_nombre",
+            value=st.session_state.contacto_nombre if st.session_state.contacto_nombre else "",
             placeholder="Nombre completo del representante",
             help="Persona responsable de la evaluación"
         )
+        st.session_state.contacto_nombre = contacto_nombre
 
-        st.text_input(
+        contacto_email = st.text_input(
             "Email Corporativo",
-            key="contacto_email",
+            value=st.session_state.contacto_email if st.session_state.contacto_email else "",
             placeholder="correo@empresa.com",
             help="Dirección de correo empresarial"
         )
+        st.session_state.contacto_email = contacto_email
 
-        st.text_input(
+        contacto_telefono = st.text_input(
             "Teléfono de Contacto",
-            key="contacto_telefono",
+            value=st.session_state.contacto_telefono if st.session_state.contacto_telefono else "",
             placeholder="+57 300 000 0000",
             help="Número directo (opcional)"
         )
+        st.session_state.contacto_telefono = contacto_telefono
 
-        # ✅ LAYER 2: Placeholder explícito como primera opción
-        cargos_con_placeholder = ["-- Seleccione cargo --"] + CARGOS
-        st.selectbox(
+        cargo_index = get_index_safe(CARGOS, st.session_state.cargo, 0)
+        cargo = st.selectbox(
             "Posición Ejecutiva",
-            options=cargos_con_placeholder,
-            key="cargo",
+            options=CARGOS,
+            index=cargo_index,
             help="Rol dentro de la estructura organizacional"
         )
+        st.session_state.cargo = cargo
 
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # ✅ LAYER 2: Validación con detección de placeholders
-    placeholder_strings = [
-        '-- Seleccione sector --',
-        '-- Seleccione facturación --',
-        '-- Seleccione empleados --',
-        '-- Seleccione cargo --'
-    ]
-
-    nombre_ok = st.session_state.get('nombre_empresa', '').strip() != ''
-    sector_ok = st.session_state.get('sector', '') not in ['', '-- Seleccione sector --']
-    facturacion_ok = st.session_state.get('facturacion_rango', '') not in ['', '-- Seleccione facturación --']
-    empleados_ok = st.session_state.get('empleados_rango', '') not in ['', '-- Seleccione empleados --']
-    contacto_nombre_ok = st.session_state.get('contacto_nombre', '').strip() != ''
-    email_ok = st.session_state.get('contacto_email', '').strip() != ''
-    cargo_ok = st.session_state.get('cargo', '') not in ['', '-- Seleccione cargo --']
-    ciudad_ok = st.session_state.get('ciudad', '').strip() != ''
+    # Validación: campos requeridos deben tener valor no-None y no-empty
+    nombre_ok = nombre_empresa and nombre_empresa.strip() != ''
+    sector_ok = sector and sector.strip() != ''
+    facturacion_ok = facturacion and facturacion.strip() != ''
+    empleados_ok = empleados and empleados.strip() != ''
+    contacto_nombre_ok = contacto_nombre and contacto_nombre.strip() != ''
+    email_ok = contacto_email and contacto_email.strip() != ''
+    cargo_ok = cargo and cargo.strip() != ''
+    ciudad_ok = ciudad and ciudad.strip() != ''
 
     all_filled = all([
         nombre_ok, sector_ok, facturacion_ok, empleados_ok,
         contacto_nombre_ok, email_ok, cargo_ok, ciudad_ok
     ])
 
-    email_value = st.session_state.get('contacto_email', '').strip()
-    email_valid = validate_email(email_value) if email_value else False
+    email_valid = validate_email(contacto_email) if email_ok else False
 
     if not all_filled or not email_valid:
         if not all_filled:
@@ -866,78 +877,45 @@ def show_diagnostic_questions():
     return q4_valid and radio_valid
 
 # ============================================================================
-# PROCESAMIENTO - LAYER 3: VALIDATION
+# PROCESAMIENTO - LAYER 3: VALIDATION WITH STATE RECOVERY
 # ============================================================================
 
 def process_diagnostic():
     """
-    LAYER 3: Validation Layer
-    Validación defensiva exhaustiva antes de procesamiento
+    LAYER 3: Validation Layer con recuperación defensiva
     """
 
     print(f"[PROCESS START] {datetime.now()}")
 
-    # ✅ LAYER 3: Extraer valores de session_state
-    facturacion = st.session_state.get('facturacion_rango', '')
-    empleados = st.session_state.get('empleados_rango', '')
-    sector = st.session_state.get('sector', '')
-    cargo = st.session_state.get('cargo', '')
-    nombre_empresa = st.session_state.get('nombre_empresa', '')
-    contacto_email = st.session_state.get('contacto_email', '')
-    ciudad = st.session_state.get('ciudad', '')
+    # Extraer valores directamente (ya validados en Layer 2)
+    facturacion = st.session_state.facturacion_rango
+    empleados = st.session_state.empleados_rango
+    sector = st.session_state.sector
+    cargo = st.session_state.cargo
+    nombre_empresa = st.session_state.nombre_empresa
+    contacto_email = st.session_state.contacto_email
+    ciudad = st.session_state.ciudad
 
-    # ✅ LAYER 3: Logging pre-validación para observabilidad
+    # Logging para observabilidad
     print(f"\n{'='*80}")
-    print(f"[LAYER 3: PRE-VALIDATION]")
+    print(f"[LAYER 3: VALIDATION]")
     print(f"{'='*80}")
-    print(f"nombre_empresa: '{nombre_empresa}' (len={len(nombre_empresa)})")
-    print(f"sector: '{sector}' (len={len(sector)})")
-    print(f"facturacion_rango: '{facturacion}' (len={len(facturacion)})")
-    print(f"empleados_rango: '{empleados}' (len={len(empleados)})")
-    print(f"contacto_email: '{contacto_email}' (len={len(contacto_email)})")
-    print(f"cargo: '{cargo}' (len={len(cargo)})")
-    print(f"ciudad: '{ciudad}' (len={len(ciudad)})")
+    print(f"nombre_empresa: '{nombre_empresa}'")
+    print(f"sector: '{sector}'")
+    print(f"facturacion_rango: '{facturacion}'")
+    print(f"empleados_rango: '{empleados}'")
+    print(f"contacto_email: '{contacto_email}'")
+    print(f"cargo: '{cargo}'")
+    print(f"ciudad: '{ciudad}'")
     print(f"{'='*80}\n")
 
-    # ✅ LAYER 3: Validación defensiva con detección de placeholders
-    placeholder_strings = [
-        '-- Seleccione sector --',
-        '-- Seleccione facturación --',
-        '-- Seleccione empleados --',
-        '-- Seleccione cargo --'
-    ]
-
-    # Validación granular con mensajes específicos
-    if facturacion in placeholder_strings or facturacion == '':
-        st.error(f"❌ **Facturación no seleccionada**")
-        st.info(f"💡 Valor actual detectado: '{facturacion}'")
-        st.info(f"📋 Por favor, seleccione un rango de facturación válido del dropdown.")
-        print(f"[VALIDATION FAILED] facturacion_rango: '{facturacion}'")
+    # Validación defensiva final (should never trigger si Layer 2 funciona)
+    if not all([facturacion, empleados, sector, cargo, nombre_empresa, contacto_email, ciudad]):
+        st.error("❌ Error crítico: Datos incompletos detectados")
+        print(f"[VALIDATION FAILED] Missing data detected")
         st.stop()
 
-    if empleados in placeholder_strings or empleados == '':
-        st.error(f"❌ **Empleados no seleccionado**")
-        st.info(f"💡 Valor actual detectado: '{empleados}'")
-        st.info(f"📋 Por favor, seleccione un rango de empleados válido del dropdown.")
-        print(f"[VALIDATION FAILED] empleados_rango: '{empleados}'")
-        st.stop()
-
-    if sector in placeholder_strings or sector == '':
-        st.error(f"❌ **Sector no seleccionado**")
-        st.info(f"💡 Valor actual detectado: '{sector}'")
-        st.info(f"📋 Por favor, seleccione un sector válido del dropdown.")
-        print(f"[VALIDATION FAILED] sector: '{sector}'")
-        st.stop()
-
-    if cargo in placeholder_strings or cargo == '':
-        st.error(f"❌ **Cargo no seleccionado**")
-        st.info(f"💡 Valor actual detectado: '{cargo}'")
-        st.info(f"📋 Por favor, seleccione un cargo válido del dropdown.")
-        print(f"[VALIDATION FAILED] cargo: '{cargo}'")
-        st.stop()
-
-    # ✅ LAYER 3: Validación pasada
-    print(f"[LAYER 3: VALIDATION PASSED] ✅ All fields validated successfully")
+    print(f"[LAYER 3: VALIDATION PASSED] ✅")
 
     # Crear ProspectInfo
     prospect_info = ProspectInfo(
@@ -947,30 +925,16 @@ def process_diagnostic():
         empleados_rango=empleados,
         contacto_nombre=st.session_state.contacto_nombre.strip(),
         contacto_email=contacto_email.strip(),
-        contacto_telefono=st.session_state.contacto_telefono.strip(),
+        contacto_telefono=st.session_state.contacto_telefono.strip() if st.session_state.contacto_telefono else "",
         cargo=cargo,
         ciudad=ciudad.strip()
     )
 
-    # ✅ LAYER 3: Verificación post-creación
-    print(f"\n{'='*80}")
-    print(f"[LAYER 3: POST-CREATION VERIFICATION]")
-    print(f"{'='*80}")
-    print(f"ProspectInfo.nombre_empresa: '{prospect_info.nombre_empresa}'")
-    print(f"ProspectInfo.sector: '{prospect_info.sector}'")
-    print(f"ProspectInfo.facturacion_rango: '{prospect_info.facturacion_rango}'")
-    print(f"ProspectInfo.empleados_rango: '{prospect_info.empleados_rango}'")
-    print(f"ProspectInfo.contacto_email: '{prospect_info.contacto_email}'")
-    print(f"ProspectInfo.cargo: '{prospect_info.cargo}'")
-    print(f"ProspectInfo.ciudad: '{prospect_info.ciudad}'")
-    print(f"{'='*80}\n")
-
-    # Manejo de frustracion "Otro"
+    # Manejo de frustración "Otro"
     frustracion = st.session_state.Q12
     if frustracion == "Otro":
         frustracion = st.session_state.get("Q12_otro", "Otro")
 
-    # ✅ TYPE-SAFE: motivacion siempre List[str]
     motivacion_list = st.session_state.Q4 if st.session_state.Q4 else []
 
     responses = DiagnosticResponses(
