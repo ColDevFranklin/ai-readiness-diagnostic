@@ -1,7 +1,6 @@
-
 """
 Formulario de Diagnóstico AI Readiness - Aplicación Principal
-Version: 4.0 - Diseño Moderno Premium + UX Optimizada
+Version: 5.0 - Diseño Premium Profesional
 """
 
 import streamlit as st
@@ -34,387 +33,378 @@ st.set_page_config(
 )
 
 # ============================================================================
-# SISTEMA DE DISEÑO PREMIUM
+# SISTEMA DE DISEÑO PREMIUM PROFESIONAL
 # ============================================================================
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Poppins:wght@600;700;800&display=swap');
 
     :root {
-        /* Paleta principal - Gradientes modernos */
-        --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        --secondary-gradient: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-        --success-gradient: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-        --dark-gradient: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+        --primary: #2563eb;
+        --primary-dark: #1e40af;
+        --primary-light: #3b82f6;
+        --accent: #06b6d4;
+        --success: #10b981;
+        --warning: #f59e0b;
+        --danger: #ef4444;
 
-        /* Colores sólidos */
-        --primary: #667eea;
-        --primary-dark: #5568d3;
-        --secondary: #f5576c;
-        --dark: #1a1a2e;
-        --darker: #0f0f1e;
-        --light: #f7f9fc;
-        --white: #ffffff;
+        --bg-dark: #0f172a;
+        --bg-darker: #020617;
+        --bg-card: #1e293b;
+        --bg-card-hover: #334155;
 
-        /* Grises refinados */
-        --gray-50: #f9fafb;
-        --gray-100: #f3f4f6;
-        --gray-200: #e5e7eb;
-        --gray-300: #d1d5db;
-        --gray-400: #9ca3af;
-        --gray-500: #6b7280;
-        --gray-600: #4b5563;
-        --gray-700: #374151;
-        --gray-800: #1f2937;
-        --gray-900: #111827;
+        --text-primary: #f8fafc;
+        --text-secondary: #cbd5e1;
+        --text-muted: #94a3b8;
 
-        /* Espaciado fluido */
-        --space-xs: 0.5rem;
-        --space-sm: 0.75rem;
+        --border: #334155;
+        --border-light: #475569;
+
+        --space-xs: 0.25rem;
+        --space-sm: 0.5rem;
         --space-md: 1rem;
         --space-lg: 1.5rem;
         --space-xl: 2rem;
-        --space-2xl: 3rem;
-        --space-3xl: 4rem;
 
-        /* Tipografía */
-        --font-primary: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        --radius: 0.75rem;
+        --radius-lg: 1rem;
 
-        /* Sombras premium */
-        --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.04);
-        --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
-        --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
-        --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.16);
-        --shadow-glow: 0 0 32px rgba(102, 126, 234, 0.3);
-
-        /* Radios */
-        --radius-sm: 8px;
-        --radius-md: 12px;
-        --radius-lg: 16px;
-        --radius-xl: 24px;
-        --radius-full: 9999px;
+        --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+        --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+        --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
     }
 
-    /* ============================================
-       BASE & RESET
-       ============================================ */
     * {
-        font-family: var(--font-primary);
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
     }
 
     .main {
-        background: linear-gradient(135deg, #0f0f1e 0%, #1a1a2e 50%, #16213e 100%);
+        background: linear-gradient(135deg, var(--bg-darker) 0%, var(--bg-dark) 100%);
         min-height: 100vh;
-        padding: 0;
     }
 
     .block-container {
-        max-width: 1400px;
-        padding: var(--space-3xl) var(--space-xl);
+        max-width: 1200px;
+        padding: var(--space-xl) var(--space-lg);
     }
 
     /* ============================================
-       HEADER HERO
+       HEADER
        ============================================ */
     .hero-header {
         text-align: center;
-        margin-bottom: var(--space-3xl);
-        padding: var(--space-2xl) 0;
+        margin-bottom: var(--space-xl);
+        padding: var(--space-lg) 0;
     }
 
     .main-title {
-        font-size: clamp(2.5rem, 5vw, 4rem);
-        font-weight: 900;
-        background: linear-gradient(135deg, #ffffff 0%, #667eea 50%, #f5576c 100%);
+        font-family: 'Poppins', sans-serif;
+        font-size: clamp(2rem, 4vw, 2.75rem);
+        font-weight: 800;
+        background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 50%, #2563eb 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
-        background-clip: text;
-        margin-bottom: var(--space-md);
-        line-height: 1.1;
-        letter-spacing: -0.03em;
-        text-shadow: 0 4px 24px rgba(102, 126, 234, 0.3);
+        margin-bottom: var(--space-sm);
+        line-height: 1.2;
+        letter-spacing: -0.02em;
     }
 
     .main-subtitle {
-        font-size: clamp(1.125rem, 2vw, 1.5rem);
-        color: rgba(255, 255, 255, 0.8);
-        font-weight: 300;
-        margin-bottom: var(--space-2xl);
-        line-height: 1.6;
+        font-size: 1rem;
+        color: var(--text-secondary);
+        font-weight: 400;
+        margin-bottom: var(--space-lg);
+        line-height: 1.5;
     }
 
-    /* Trust badges mejorados */
     .trust-container {
         display: flex;
         justify-content: center;
-        gap: var(--space-lg);
+        gap: var(--space-md);
         flex-wrap: wrap;
-        margin-bottom: var(--space-xl);
+        margin-top: var(--space-lg);
     }
 
     .trust-badge {
-        background: rgba(255, 255, 255, 0.05);
-        backdrop-filter: blur(20px);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        padding: var(--space-sm) var(--space-lg);
-        border-radius: var(--radius-full);
-        font-size: 0.875rem;
+        background: rgba(37, 99, 235, 0.1);
+        border: 1px solid rgba(37, 99, 235, 0.2);
+        padding: var(--space-sm) var(--space-md);
+        border-radius: var(--radius);
+        font-size: 0.8125rem;
         font-weight: 600;
-        color: rgba(255, 255, 255, 0.9);
+        color: var(--text-secondary);
         display: inline-flex;
         align-items: center;
         gap: var(--space-sm);
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        transition: all 0.2s ease;
     }
 
     .trust-badge:hover {
-        background: rgba(255, 255, 255, 0.1);
-        border-color: rgba(102, 126, 234, 0.5);
-        transform: translateY(-2px);
-        box-shadow: var(--shadow-glow);
+        background: rgba(37, 99, 235, 0.15);
+        border-color: rgba(37, 99, 235, 0.3);
     }
 
     /* ============================================
-       PROGRESS BAR REDISEÑADO
+       PROGRESS
        ============================================ */
     .progress-wrapper {
-        background: rgba(255, 255, 255, 0.05);
-        backdrop-filter: blur(20px);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: var(--radius-xl);
-        padding: var(--space-xl);
-        margin-bottom: var(--space-2xl);
-        box-shadow: var(--shadow-xl);
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: var(--space-lg);
+        margin-bottom: var(--space-xl);
     }
 
     .progress-header {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-bottom: var(--space-lg);
+        margin-bottom: var(--space-md);
     }
 
     .progress-step-label {
-        font-size: 1rem;
+        font-size: 0.875rem;
         font-weight: 600;
-        color: rgba(255, 255, 255, 0.9);
+        color: var(--text-primary);
+        letter-spacing: 0.025em;
     }
 
     .progress-percentage {
-        font-size: 1.5rem;
-        font-weight: 800;
-        background: var(--primary-gradient);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
+        font-size: 1.25rem;
+        font-weight: 700;
+        color: var(--primary-light);
     }
 
     .stProgress > div > div {
-        background: rgba(255, 255, 255, 0.1);
-        border-radius: var(--radius-full);
-        height: 8px;
-        overflow: hidden;
+        background: rgba(37, 99, 235, 0.2);
+        border-radius: var(--radius);
+        height: 6px;
     }
 
     .stProgress > div > div > div {
-        background: var(--primary-gradient);
-        border-radius: var(--radius-full);
-        height: 8px;
-        box-shadow: 0 0 16px rgba(102, 126, 234, 0.5);
+        background: linear-gradient(90deg, var(--primary) 0%, var(--primary-light) 100%);
+        border-radius: var(--radius);
+        height: 6px;
     }
 
     /* ============================================
-       SECTION CARDS PREMIUM
+       SECTION CARDS
        ============================================ */
     .section-card {
-        background: rgba(255, 255, 255, 0.03);
-        backdrop-filter: blur(20px);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: var(--radius-xl);
-        padding: var(--space-2xl);
-        margin-bottom: var(--space-xl);
-        box-shadow: var(--shadow-xl);
-        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-        position: relative;
-        overflow: hidden;
-    }
-
-    .section-card::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        height: 3px;
-        background: var(--primary-gradient);
-        opacity: 0;
-        transition: opacity 0.3s ease;
-    }
-
-    .section-card:hover {
-        border-color: rgba(102, 126, 234, 0.3);
-        transform: translateY(-4px);
-        box-shadow: var(--shadow-glow);
-    }
-
-    .section-card:hover::before {
-        opacity: 1;
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: var(--space-xl);
+        margin-bottom: var(--space-lg);
+        box-shadow: var(--shadow-md);
     }
 
     .section-title {
-        font-size: 1.75rem;
+        font-size: 1.25rem;
         font-weight: 700;
-        color: var(--white);
-        margin-bottom: var(--space-xl);
-        display: flex;
-        align-items: center;
-        gap: var(--space-md);
+        color: var(--text-primary);
+        margin-bottom: var(--space-lg);
         padding-bottom: var(--space-md);
-        border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+        border-bottom: 1px solid var(--border);
     }
 
     /* ============================================
-       FORM INPUTS REDISEÑADOS
+       FORM INPUTS
        ============================================ */
     .stTextInput label,
     .stSelectbox label,
     .stMultiSelect label {
-        font-size: 0.875rem !important;
+        font-size: 0.8125rem !important;
         font-weight: 600 !important;
-        color: rgba(255, 255, 255, 0.9) !important;
+        color: var(--text-primary) !important;
         margin-bottom: var(--space-sm) !important;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
     }
 
-    .stTextInput > div > div > input,
-    .stSelectbox > div > div,
-    .stMultiSelect > div > div {
-        background: rgba(255, 255, 255, 0.05) !important;
-        border: 1px solid rgba(255, 255, 255, 0.15) !important;
-        border-radius: var(--radius-md) !important;
-        color: var(--white) !important;
-        font-size: 1rem !important;
-        padding: var(--space-md) var(--space-lg) !important;
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-        min-height: 48px;
+    .stTextInput > div > div > input {
+        background: var(--bg-darker) !important;
+        border: 1px solid var(--border) !important;
+        border-radius: var(--radius) !important;
+        color: var(--text-primary) !important;
+        font-size: 0.9375rem !important;
+        padding: 0.625rem 0.875rem !important;
+        transition: all 0.2s ease !important;
+        height: 42px;
     }
 
     .stTextInput > div > div > input::placeholder {
-        color: rgba(255, 255, 255, 0.4) !important;
-        font-weight: 400;
+        color: var(--text-muted) !important;
     }
 
-    .stTextInput > div > div > input:focus,
-    .stSelectbox > div > div:focus-within,
-    .stMultiSelect > div > div:focus-within {
-        background: rgba(255, 255, 255, 0.08) !important;
+    .stTextInput > div > div > input:focus {
+        background: var(--bg-dark) !important;
         border-color: var(--primary) !important;
-        box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.15) !important;
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1) !important;
         outline: none !important;
     }
 
-    /* Selectbox específico */
-    .stSelectbox > div > div > div {
-        color: var(--white) !important;
-        background: transparent !important;
+    /* Selectbox */
+    .stSelectbox [data-baseweb="select"] {
+        background: var(--bg-darker) !important;
+        border: 1px solid var(--border) !important;
+        border-radius: var(--radius) !important;
+        min-height: 42px !important;
+    }
+
+    .stSelectbox [data-baseweb="select"]:focus-within {
+        border-color: var(--primary) !important;
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1) !important;
     }
 
     .stSelectbox [data-baseweb="select"] > div {
-        background: rgba(255, 255, 255, 0.05) !important;
-        border-color: rgba(255, 255, 255, 0.15) !important;
+        color: var(--text-primary) !important;
+        font-size: 0.9375rem !important;
+        padding: 0.375rem 0.875rem !important;
+    }
+
+    /* Dropdown menu */
+    [data-baseweb="popover"] {
+        background: var(--bg-card) !important;
+        border: 1px solid var(--border) !important;
+        border-radius: var(--radius) !important;
+        box-shadow: var(--shadow-lg) !important;
+    }
+
+    [role="option"] {
+        color: var(--text-primary) !important;
+        background: var(--bg-card) !important;
+        padding: 0.625rem 0.875rem !important;
+        font-size: 0.9375rem !important;
+    }
+
+    [role="option"]:hover {
+        background: var(--bg-card-hover) !important;
+        color: var(--text-primary) !important;
+    }
+
+    [aria-selected="true"] {
+        background: rgba(37, 99, 235, 0.2) !important;
+        color: var(--primary-light) !important;
     }
 
     /* ============================================
-       RADIO BUTTONS MODERNOS
+       RADIO BUTTONS
        ============================================ */
     .stRadio > label {
-        font-size: 1rem !important;
+        font-size: 0.8125rem !important;
         font-weight: 600 !important;
-        color: rgba(255, 255, 255, 0.9) !important;
-        margin-bottom: var(--space-lg) !important;
+        color: var(--text-primary) !important;
+        margin-bottom: var(--space-md) !important;
     }
 
     .stRadio > div {
-        background: transparent !important;
-        padding: 0 !important;
-        gap: var(--space-md);
+        gap: var(--space-sm);
     }
 
     .stRadio > div > label {
-        background: rgba(255, 255, 255, 0.03) !important;
-        backdrop-filter: blur(10px);
-        border: 1px solid rgba(255, 255, 255, 0.1) !important;
-        border-radius: var(--radius-md) !important;
-        padding: var(--space-lg) !important;
-        margin-bottom: var(--space-sm) !important;
+        background: var(--bg-darker) !important;
+        border: 1px solid var(--border) !important;
+        border-radius: var(--radius) !important;
+        padding: 0.75rem 1rem !important;
+        margin: 0 !important;
         cursor: pointer !important;
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-        color: rgba(255, 255, 255, 0.8) !important;
-        font-weight: 500 !important;
+        transition: all 0.2s ease !important;
+        display: flex !important;
+        align-items: center !important;
     }
 
     .stRadio > div > label:hover {
-        background: rgba(255, 255, 255, 0.06) !important;
+        background: var(--bg-card) !important;
         border-color: var(--primary) !important;
-        transform: translateX(4px);
-        box-shadow: var(--shadow-md);
     }
 
-    .stRadio > div > label > div {
-        color: rgba(255, 255, 255, 0.8) !important;
+    .stRadio > div > label > div:first-child {
+        margin-right: var(--space-md) !important;
+        width: 18px !important;
+        height: 18px !important;
+        min-width: 18px !important;
+    }
+
+    .stRadio > div > label > div:first-child > div {
+        background: transparent !important;
+        border: 2px solid var(--border-light) !important;
+        width: 18px !important;
+        height: 18px !important;
+    }
+
+    .stRadio > div > label[data-checked="true"] {
+        background: rgba(37, 99, 235, 0.1) !important;
+        border-color: var(--primary) !important;
+    }
+
+    .stRadio > div > label[data-checked="true"] > div:first-child > div {
+        border-color: var(--primary) !important;
+        background: var(--primary) !important;
+    }
+
+    .stRadio > div > label[data-checked="true"] > div:first-child > div::after {
+        content: '';
+        display: block;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: white;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+    }
+
+    .stRadio > div > label > div:last-child {
+        color: var(--text-secondary) !important;
+        font-size: 0.9375rem !important;
+        font-weight: 500 !important;
+    }
+
+    .stRadio > div > label[data-checked="true"] > div:last-child {
+        color: var(--text-primary) !important;
     }
 
     /* ============================================
        MULTISELECT
        ============================================ */
+    .stMultiSelect [data-baseweb="select"] {
+        background: var(--bg-darker) !important;
+        border: 1px solid var(--border) !important;
+        border-radius: var(--radius) !important;
+        min-height: 42px !important;
+    }
+
     .stMultiSelect [data-baseweb="tag"] {
-        background: var(--primary-gradient) !important;
+        background: var(--primary) !important;
         border: none !important;
-        border-radius: var(--radius-sm) !important;
-        padding: var(--space-xs) var(--space-md) !important;
-        color: var(--white) !important;
+        border-radius: calc(var(--radius) - 2px) !important;
+        padding: 0.25rem 0.5rem !important;
+        color: white !important;
         font-weight: 600 !important;
+        font-size: 0.8125rem !important;
     }
 
     /* ============================================
-       BOTONES PREMIUM
+       BUTTONS
        ============================================ */
     .stButton > button {
         width: 100%;
-        background: var(--primary-gradient) !important;
-        color: var(--white) !important;
-        font-weight: 700 !important;
-        font-size: 1.125rem !important;
-        padding: var(--space-lg) var(--space-2xl) !important;
-        border-radius: var(--radius-md) !important;
+        background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%) !important;
+        color: white !important;
+        font-weight: 600 !important;
+        font-size: 0.9375rem !important;
+        padding: 0.75rem 1.5rem !important;
+        border-radius: var(--radius) !important;
         border: none !important;
-        box-shadow: var(--shadow-lg) !important;
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-        letter-spacing: 0.05em;
-        text-transform: uppercase;
-        position: relative;
-        overflow: hidden;
-    }
-
-    .stButton > button::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: -100%;
-        width: 100%;
-        height: 100%;
-        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
-        transition: left 0.5s ease;
+        box-shadow: var(--shadow-md) !important;
+        transition: all 0.2s ease !important;
+        letter-spacing: 0.01em;
     }
 
     .stButton > button:hover {
-        transform: translateY(-2px);
-        box-shadow: var(--shadow-glow) !important;
-    }
-
-    .stButton > button:hover::before {
-        left: 100%;
+        transform: translateY(-1px);
+        box-shadow: var(--shadow-lg) !important;
+        background: linear-gradient(135deg, var(--primary-light) 0%, var(--primary) 100%) !important;
     }
 
     .stButton > button:active {
@@ -422,111 +412,97 @@ st.markdown("""
     }
 
     /* ============================================
-       ALERTAS MODERNAS
+       ALERTS
        ============================================ */
     .stAlert {
-        background: rgba(255, 255, 255, 0.05) !important;
-        backdrop-filter: blur(20px);
-        border: 1px solid rgba(255, 255, 255, 0.1) !important;
-        border-radius: var(--radius-lg) !important;
-        padding: var(--space-lg) !important;
-        color: rgba(255, 255, 255, 0.9) !important;
-        border-left-width: 4px !important;
+        background: var(--bg-card) !important;
+        border: 1px solid var(--border) !important;
+        border-radius: var(--radius) !important;
+        padding: var(--space-md) !important;
+        color: var(--text-secondary) !important;
+        border-left-width: 3px !important;
     }
 
     .stSuccess {
-        border-left-color: #4facfe !important;
+        border-left-color: var(--success) !important;
+        background: rgba(16, 185, 129, 0.05) !important;
     }
 
     .stWarning {
-        border-left-color: #f5576c !important;
+        border-left-color: var(--warning) !important;
+        background: rgba(245, 158, 11, 0.05) !important;
+    }
+
+    .stError {
+        border-left-color: var(--danger) !important;
+        background: rgba(239, 68, 68, 0.05) !important;
     }
 
     .stInfo {
-        border-left-color: #667eea !important;
+        border-left-color: var(--accent) !important;
+        background: rgba(6, 182, 212, 0.05) !important;
     }
 
     /* ============================================
-       MÉTRICAS
+       METRICS
        ============================================ */
     [data-testid="metric-container"] {
-        background: rgba(255, 255, 255, 0.03);
-        backdrop-filter: blur(20px);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: var(--radius-lg);
-        padding: var(--space-xl);
-        box-shadow: var(--shadow-lg);
-        transition: all 0.3s ease;
-    }
-
-    [data-testid="metric-container"]:hover {
-        border-color: rgba(102, 126, 234, 0.3);
-        transform: translateY(-4px);
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: var(--space-lg);
+        box-shadow: var(--shadow);
     }
 
     [data-testid="stMetricLabel"] {
-        font-size: 0.875rem !important;
+        font-size: 0.8125rem !important;
         font-weight: 600 !important;
-        color: rgba(255, 255, 255, 0.6) !important;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
+        color: var(--text-muted) !important;
     }
 
     [data-testid="stMetricValue"] {
-        font-size: 2.5rem !important;
-        font-weight: 800 !important;
-        background: var(--primary-gradient);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
-    }
-
-    /* ============================================
-       COLUMNAS
-       ============================================ */
-    [data-testid="column"] {
-        padding: var(--space-sm);
+        font-size: 1.875rem !important;
+        font-weight: 700 !important;
+        color: var(--text-primary) !important;
     }
 
     /* ============================================
        EXPANDER
        ============================================ */
     .streamlit-expanderHeader {
-        background: rgba(255, 255, 255, 0.05) !important;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: var(--radius-md) !important;
-        color: rgba(255, 255, 255, 0.9) !important;
+        background: var(--bg-card) !important;
+        border: 1px solid var(--border) !important;
+        border-radius: var(--radius) !important;
+        color: var(--text-primary) !important;
         font-weight: 600 !important;
         padding: var(--space-md) !important;
     }
 
     .streamlit-expanderHeader:hover {
-        background: rgba(255, 255, 255, 0.08) !important;
-        border-color: var(--primary);
-    }
-
-    /* ============================================
-       SPINNER
-       ============================================ */
-    .stSpinner > div {
+        background: var(--bg-card-hover) !important;
         border-color: var(--primary) !important;
-        border-right-color: transparent !important;
     }
 
     /* ============================================
-       SECURITY FOOTER
+       SECURITY NOTICE
        ============================================ */
     .security-notice {
-        background: rgba(255, 255, 255, 0.03);
-        backdrop-filter: blur(20px);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: var(--radius-lg);
-        padding: var(--space-xl);
-        margin-top: var(--space-2xl);
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: var(--space-lg);
+        margin-top: var(--space-xl);
         text-align: center;
-        color: rgba(255, 255, 255, 0.7);
-        font-size: 0.875rem;
+        color: var(--text-muted);
+        font-size: 0.8125rem;
         line-height: 1.6;
+    }
+
+    /* ============================================
+       COLUMNS
+       ============================================ */
+    [data-testid="column"] {
+        padding: 0 var(--space-sm);
     }
 
     /* ============================================
@@ -534,15 +510,11 @@ st.markdown("""
        ============================================ */
     @media (max-width: 768px) {
         .block-container {
-            padding: var(--space-xl) var(--space-md);
+            padding: var(--space-lg) var(--space-md);
         }
 
         .main-title {
-            font-size: 2rem;
-        }
-
-        .main-subtitle {
-            font-size: 1rem;
+            font-size: 1.75rem;
         }
 
         .section-card {
@@ -554,62 +526,35 @@ st.markdown("""
         }
 
         [data-testid="stMetricValue"] {
-            font-size: 2rem !important;
+            font-size: 1.5rem !important;
         }
     }
 
     /* ============================================
-       ANIMACIONES
-       ============================================ */
-    @keyframes fadeInUp {
-        from {
-            opacity: 0;
-            transform: translateY(30px);
-        }
-        to {
-            opacity: 1;
-            transform: translateY(0);
-        }
-    }
-
-    @keyframes pulse {
-        0%, 100% {
-            opacity: 1;
-        }
-        50% {
-            opacity: 0.8;
-        }
-    }
-
-    .section-card {
-        animation: fadeInUp 0.6s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-
-    /* ============================================
-       HIDE STREAMLIT BRANDING
+       HIDE STREAMLIT
        ============================================ */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
 
     /* ============================================
-       SCROLLBAR PERSONALIZADO
+       SCROLLBAR
        ============================================ */
     ::-webkit-scrollbar {
-        width: 10px;
+        width: 8px;
     }
 
     ::-webkit-scrollbar-track {
-        background: rgba(255, 255, 255, 0.05);
+        background: var(--bg-darker);
     }
 
     ::-webkit-scrollbar-thumb {
-        background: var(--primary-gradient);
-        border-radius: var(--radius-full);
+        background: var(--border-light);
+        border-radius: var(--radius);
     }
 
     ::-webkit-scrollbar-thumb:hover {
-        background: var(--secondary-gradient);
+        background: var(--primary);
     }
 
 </style>
@@ -737,7 +682,7 @@ def collect_prospect_info():
     st.markdown('<div class="section-card">', unsafe_allow_html=True)
     st.markdown('<div class="section-title">📊 Información Empresarial</div>', unsafe_allow_html=True)
 
-    col1, col2 = st.columns(2, gap="large")
+    col1, col2 = st.columns(2, gap="medium")
 
     with col1:
         st.text_input(
@@ -1131,4 +1076,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
