@@ -1,6 +1,6 @@
 """
-Conector de Google Sheets - Version 3.0 FINAL
-FIXED: Complete schema alignment + robust error handling
+Conector de Google Sheets - Version 3.1 FINAL
+FIXED: Robust handling of List[str] fields
 """
 
 import gspread
@@ -70,7 +70,7 @@ class SheetsConnector:
             raise
 
     def _save_to_responses(self, result: DiagnosticResult):
-        """Guardar respuestas raw del prospecto"""
+        """Guardar respuestas raw del prospecto - FIXED: List[str] handling"""
         worksheet = self._get_or_create_worksheet("responses")
 
         if worksheet.row_count == 1 or not worksheet.row_values(1):
@@ -85,6 +85,9 @@ class SheetsConnector:
             ]
             worksheet.append_row(headers)
 
+        # ✅ FIX: Robust handling of List[str] field
+        motivacion_str = ", ".join(result.responses.motivacion) if isinstance(result.responses.motivacion, list) else str(result.responses.motivacion)
+
         row = [
             result.created_at.strftime("%Y-%m-%d %H:%M:%S"),
             result.diagnostic_id,
@@ -97,7 +100,7 @@ class SheetsConnector:
             result.prospect_info.contacto_telefono,
             result.prospect_info.cargo,
             result.prospect_info.ciudad,
-            ", ".join(result.responses.motivacion),
+            motivacion_str,  # ✅ SAFE: converts List[str] to comma-separated string
             result.responses.toma_decisiones,
             result.responses.procesos_criticos,
             result.responses.tareas_repetitivas,
@@ -112,6 +115,7 @@ class SheetsConnector:
         ]
 
         worksheet.append_row(row, value_input_option='USER_ENTERED')
+        print(f"[RESPONSES SAVED] {result.prospect_info.nombre_empresa} | Motivaciones: {motivacion_str}")
 
     def _save_to_scores(self, result: DiagnosticResult):
         """Guardar scores - SCHEMA COMPLETAMENTE ALINEADO CON DASHBOARD"""

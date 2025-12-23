@@ -1,6 +1,6 @@
 """
 Formulario de Diagnóstico AI Readiness - Aplicación Principal
-Version: 5.0 - Diseño Premium Profesional
+Version: 5.1 - FIXED: Google Sheets Integration
 """
 
 import streamlit as st
@@ -812,11 +812,11 @@ def show_diagnostic_questions():
     return q4_valid and radio_valid
 
 # ============================================================================
-# PROCESAMIENTO
+# PROCESAMIENTO - FIX CRÍTICO APLICADO AQUÍ
 # ============================================================================
 
 def process_diagnostic():
-    """Procesar evaluación completa"""
+    """Procesar evaluación completa - FIXED: Schema alignment"""
     prospect_info = ProspectInfo(
         nombre_empresa=st.session_state.nombre_empresa.strip(),
         sector=st.session_state.sector,
@@ -829,14 +829,14 @@ def process_diagnostic():
         ciudad=st.session_state.ciudad.strip()
     )
 
+    # Manejo de frustracion "Otro"
     frustracion = st.session_state.Q12
     if frustracion == "Otro":
         frustracion = st.session_state.get("Q12_otro", "Otro")
 
-    motivaciones_str = ", ".join(st.session_state.Q4) if st.session_state.Q4 else ""
-
+    # ✅ FIX CRÍTICO: motivacion debe ser List[str], NO string
     responses = DiagnosticResponses(
-        motivacion=motivaciones_str,
+        motivacion=st.session_state.Q4 if st.session_state.Q4 else [],  # ✅ CORRECTO
         toma_decisiones=st.session_state.Q5,
         procesos_criticos=st.session_state.Q6,
         tareas_repetitivas=st.session_state.Q7,
