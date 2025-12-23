@@ -1,4 +1,3 @@
-```python
 """
 Formulario de Diagnóstico AI Readiness - Aplicación Principal
 Version: 4.0 - Diseño Moderno Premium + UX Optimizada
