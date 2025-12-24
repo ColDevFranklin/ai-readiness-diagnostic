@@ -1,12 +1,9 @@
 """
-Sistema de envío de emails - Version 2.1 FASTAPI COMPATIBLE
-FIXED: Compatibilidad con secrets adapter
+Sistema de envío de emails - Version 3.0 RESEND
+FIXED: Migrado de SMTP a Resend API
 """
 
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from email.mime.application import MIMEApplication
+import resend
 from pathlib import Path
 from typing import Optional
 import traceback
@@ -20,20 +17,29 @@ from core.models import DiagnosticResult
 
 
 class EmailSender:
-    """Envío de emails automatizados según Tier"""
+    """Envío de emails automatizados según Tier usando Resend"""
 
     def __init__(self):
-        """Inicializar con secrets adapter"""
-        smtp_config = secrets["smtp"]
+        """Inicializar con Resend API Key"""
+        email_config = secrets.get("email", {})
 
-        self.smtp_server = smtp_config.get("server", "smtp.gmail.com")
-        self.smtp_port = smtp_config.get("port", 587)
-        self.sender_email = smtp_config["user"]
-        self.sender_password = smtp_config["password"]
-        self.from_email = smtp_config.get("from", smtp_config["user"])
+        # Obtener API key de Resend
+        self.api_key = email_config.get("resend_api_key")
+        if not self.api_key:
+            # Fallback: buscar en root level del secrets
+            self.api_key = secrets.get("resend_api_key")
+
+        if not self.api_key:
+            raise ValueError("RESEND_API_KEY no encontrada en secrets/env")
+
+        # Configurar Resend
+        resend.api_key = self.api_key
+
+        # Email remitente (usar el de Resend por defecto o uno verificado)
+        self.from_email = email_config.get("from", "onboarding@resend.dev")
         self.sender_name = "Andrés - AI Consulting"
 
-        print(f"[EMAIL INIT] SMTP: {self.smtp_server}:{self.smtp_port} | Sender: {self.sender_email}")
+        print(f"[EMAIL INIT] Resend configurado | From: {self.from_email}")
 
     def send_confirmation_email(
         self,
@@ -45,53 +51,43 @@ class EmailSender:
         try:
             print(f"[EMAIL START] Enviando a {result.prospect_info.contacto_email} | Tier: {result.score.tier.value}")
 
-            msg = MIMEMultipart()
-            msg['From'] = f"{self.sender_name} <{self.sender_email}>"
-            msg['To'] = result.prospect_info.contacto_email
-
+            # Obtener contenido según Tier
             if result.score.tier.value == "A":
-                subject, body = self._get_tier_a_content(result)
+                subject, html_body = self._get_tier_a_content(result)
             elif result.score.tier.value == "B":
-                subject, body = self._get_tier_b_content(result)
+                subject, html_body = self._get_tier_b_content(result)
             else:
-                subject, body = self._get_tier_c_content(result)
+                subject, html_body = self._get_tier_c_content(result)
 
-            msg['Subject'] = subject
-            msg.attach(MIMEText(body, 'html'))
+            # Preparar parámetros del email
+            email_params = {
+                "from": f"{self.sender_name} <{self.from_email}>",
+                "to": [result.prospect_info.contacto_email],
+                "subject": subject,
+                "html": html_body,
+            }
 
+            # Adjuntar PDF si existe
             if pdf_path and pdf_path.exists():
                 with open(pdf_path, 'rb') as f:
-                    pdf_attachment = MIMEApplication(f.read(), _subtype='pdf')
-                    pdf_attachment.add_header(
-                        'Content-Disposition',
-                        'attachment',
-                        filename=f'Diagnostico_AI_{result.prospect_info.nombre_empresa}.pdf'
-                    )
-                    msg.attach(pdf_attachment)
+                    pdf_content = f.read()
+
+                email_params["attachments"] = [{
+                    "filename": f"Diagnostico_AI_{result.prospect_info.nombre_empresa}.pdf",
+                    "content": list(pdf_content)  # Resend requiere lista de bytes
+                }]
                 print(f"[EMAIL PDF] Adjuntando PDF: {pdf_path}")
 
-            with smtplib.SMTP(self.smtp_server, self.smtp_port, timeout=30) as server:
-                server.set_debuglevel(1)
-                server.starttls()
-                server.login(self.sender_email, self.sender_password)
-                server.send_message(msg)
+            # Enviar con Resend
+            response = resend.Emails.send(email_params)
 
-            print(f"[EMAIL SUCCESS] Enviado a {result.prospect_info.contacto_email}")
+            print(f"[EMAIL SUCCESS] Enviado a {result.prospect_info.contacto_email} | ID: {response.get('id', 'N/A')}")
             return True
-
-        except smtplib.SMTPAuthenticationError as e:
-            print(f"[EMAIL AUTH ERROR] Credenciales inválidas: {e}")
-            print(f"  Revisar SMTP_USER y SMTP_PASSWORD en .env")
-            print(traceback.format_exc())
-            return False
-
-        except smtplib.SMTPException as e:
-            print(f"[EMAIL SMTP ERROR] {datetime.now()}: {e}")
-            print(traceback.format_exc())
-            return False
 
         except Exception as e:
             print(f"[EMAIL ERROR] {datetime.now()}: {e}")
+            print(f"  Destinatario: {result.prospect_info.contacto_email}")
+            print(f"  Tier: {result.score.tier.value}")
             print(traceback.format_exc())
             return False
 

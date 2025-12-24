@@ -1,6 +1,8 @@
+
 """
 Adaptador de Secrets para FastAPI
 Permite usar st.secrets (Streamlit) con variables de entorno (.env)
+Version 3.0 - Soporte para Resend
 """
 import os
 import json
@@ -53,7 +55,16 @@ class SecretsAdapter:
             self._secrets['spreadsheet_id'] = os.getenv('SPREADSHEET_ID', '')
             self._secrets['sheet_name'] = os.getenv('SHEET_NAME', 'AI_Readiness_Diagnostics')
 
-            # SMTP Configuration
+            # EMAIL CONFIGURATION - Resend (NUEVO)
+            self._secrets['email'] = {
+                'resend_api_key': os.getenv('RESEND_API_KEY'),
+                'from': os.getenv('EMAIL_FROM', 'onboarding@resend.dev')
+            }
+
+            # Fallback: también soportar key en root level
+            self._secrets['resend_api_key'] = os.getenv('RESEND_API_KEY')
+
+            # SMTP Configuration (LEGACY - Mantener por compatibilidad)
             self._secrets['smtp'] = {
                 'server': os.getenv('SMTP_SERVER', 'smtp.gmail.com'),
                 'port': int(os.getenv('SMTP_PORT', 587)),
@@ -62,7 +73,10 @@ class SecretsAdapter:
                 'from': os.getenv('EMAIL_FROM', os.getenv('SMTP_USER', ''))
             }
 
-            print(f"[SECRETS] ✓ SMTP configurado para {self._secrets['smtp']['user']}")
+            if self._secrets['email']['resend_api_key']:
+                print(f"[SECRETS] ✓ Resend configurado | From: {self._secrets['email']['from']}")
+            else:
+                print("[SECRETS] ⚠ RESEND_API_KEY no encontrado - emails NO funcionarán")
 
         # OPCIÓN 2: Fallback a secrets.toml (para Streamlit legacy)
         else:
@@ -124,5 +138,6 @@ secrets = SecretsAdapter()
 if __name__ == '__main__':
     print("=== TEST DE SECRETS ===")
     print(f"Claves disponibles: {list(secrets.keys())}")
-    print(f"Email configurado: {secrets.get('smtp', {}).get('user', 'N/A')}")
+    print(f"Resend API Key configurada: {'✓' if secrets.get('resend_api_key') else '✗'}")
+    print(f"Email From: {secrets.get('email', {}).get('from', 'N/A')}")
     print(f"Spreadsheet ID: {secrets.get('spreadsheet_id', 'N/A')}")
