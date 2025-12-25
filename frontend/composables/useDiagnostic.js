@@ -32,6 +32,7 @@ export const useDiagnostic = () => {
       if (response.success) {
         questions.value = response.questions;
 
+        // Inicializar arrays para preguntas multi-select
         questions.value.forEach((q) => {
           if (q.type === "multi-select" && !responses.value[q.id]) {
             responses.value[q.id] = [];
@@ -78,6 +79,7 @@ export const useDiagnostic = () => {
       return answer !== undefined && answer !== null && answer !== "";
     });
 
+    // Validación especial para Q12 con campo "Otro"
     const q12Question = questions.value.find((q) => q.id === "Q12");
     if (q12Question && q12Question.has_other) {
       const lastOption = q12Question.options[q12Question.options.length - 1];
@@ -153,24 +155,51 @@ export const useDiagnostic = () => {
         Q15: responses.value.Q15 || "",
       };
 
-      console.log("📤 Enviando payload:", payload);
+      console.log("📤 PAYLOAD ENVIADO:", payload);
 
       const response = await $fetch(`${config.public.apiBase}/diagnostic`, {
         method: "POST",
         body: payload,
       });
 
-      console.log("✅ Respuesta recibida:", response);
+      console.log("✅ RESPUESTA RECIBIDA:", response);
+
+      // ===== LOGS DETALLADOS PARA DEBUG =====
+      console.log("📊 STATUS INTEGRACIONES:", {
+        sheets_success: response.success,
+        diagnostic_id: response.diagnostic_id,
+        email_sent: response.email_sent,
+        pdf_generated: response.pdf_generated,
+        tier: response.tier,
+        score: response.score_total,
+      });
+
+      if (!response.success) {
+        console.warn("⚠️ GOOGLE SHEETS NO GUARDÓ");
+        console.warn("   → Revisar logs del backend para detalles");
+        console.warn("   → El diagnóstico continuó (PDF y resultados OK)");
+      } else {
+        console.log("✅ GUARDADO EN GOOGLE SHEETS EXITOSO");
+      }
+
       result.value = response;
     } catch (err) {
+      console.error("❌ ERROR EN SUBMIT:", err);
+
       if (err.status === 429) {
         error.value =
           "Ya procesamos tu diagnóstico recientemente. Por favor espera 5 minutos.";
       } else {
         error.value = err.data?.detail || "Error al procesar diagnóstico";
       }
-      console.error("[submitDiagnostic ERROR]", err);
-      step.value = 1;
+
+      console.error("[submitDiagnostic ERROR COMPLETO]", {
+        status: err.status,
+        message: err.message,
+        data: err.data,
+      });
+
+      step.value = 1; // Volver al paso anterior
     } finally {
       loading.value = false;
     }

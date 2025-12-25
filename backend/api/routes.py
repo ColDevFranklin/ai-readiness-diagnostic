@@ -7,6 +7,7 @@ import hashlib
 import time
 import sys
 import json
+import traceback
 from pathlib import Path
 
 # Agregar path para imports
@@ -72,6 +73,10 @@ class DiagnosticResponse(BaseModel):
     diagnostic_id: str
     tier: str
     score_total: int
+    score_datos: int
+    score_talento: int
+    score_procesos: int
+    score_infraestructura: int
     arquetipo: str
     servicio_sugerido: str
     monto_min: int
@@ -151,6 +156,7 @@ async def get_questions():
 async def process_diagnostic(request: DiagnosticRequest):
     """Procesa diagnóstico completo"""
 
+    # Idempotency check
     if not check_idempotency(request.contacto_email):
         raise HTTPException(
             status_code=429,
@@ -158,6 +164,7 @@ async def process_diagnostic(request: DiagnosticRequest):
         )
 
     try:
+        # Construir objetos del modelo
         prospect_info = ProspectInfo(
             nombre_empresa=request.nombre_empresa,
             sector=request.sector,
@@ -170,6 +177,7 @@ async def process_diagnostic(request: DiagnosticRequest):
             ciudad=request.ciudad
         )
 
+        # Manejar campo "Otro" en Q12
         frustracion = request.Q12
         if frustracion == "Otro":
             frustracion = request.Q12_otro or "Otro"
@@ -189,18 +197,26 @@ async def process_diagnostic(request: DiagnosticRequest):
             presupuesto_rango=request.Q15
         )
 
+        # Scoring Engine
+        print(f"[DIAGNOSTIC] Calculando scores...")
         engine = ScoringEngine()
         score = engine.calculate_full_score(responses, prospect_info)
+        print(f"[DIAGNOSTIC] ✅ Score calculado: {score.score_final}/100")
 
+        # Classifier
+        print(f"[DIAGNOSTIC] Clasificando arquetipo...")
         classifier = ArchetypeClassifier()
         arquetipo = classifier.classify(score, responses, prospect_info)
+        print(f"[DIAGNOSTIC] ✅ Arquetipo: {arquetipo.nombre} (Tier {score.tier.value})")
 
+        # Insight Generator
         insight_gen = InsightGenerator()
         quick_wins = insight_gen.generate_quick_wins(score, responses, arquetipo)
         red_flags = insight_gen.generate_red_flags(score, responses, prospect_info)
         insights = insight_gen.generate_insights(score, responses, arquetipo)
         reunion_prep = insight_gen.generate_reunion_prep(score, responses, arquetipo, prospect_info)
 
+        # Determinar servicio y rango de inversión
         if score.tier.value == "A":
             servicio = "Implementación Completa"
             monto_min, monto_max = 25000000, 45000000
@@ -211,6 +227,7 @@ async def process_diagnostic(request: DiagnosticRequest):
             servicio = "Workshop Educativo"
             monto_min, monto_max = 0, 5000000
 
+        # Construir resultado completo
         result = DiagnosticResult(
             prospect_info=prospect_info,
             responses=responses,
@@ -225,37 +242,68 @@ async def process_diagnostic(request: DiagnosticRequest):
             reunion_prep=reunion_prep
         )
 
+        # ===== INTEGRACIÓN GOOGLE SHEETS (CON LOGS DETALLADOS) =====
         sheets_success = False
         try:
+            print(f"\n{'='*70}")
+            print(f"[SHEETS] Iniciando guardado en Google Sheets...")
+            print(f"  Empresa: {prospect_info.nombre_empresa}")
+            print(f"  Email: {prospect_info.contacto_email}")
+            print(f"  Diagnostic ID: {result.diagnostic_id}")
+            print(f"{'='*70}")
+
             connector = SheetsConnector()
             connector.save_diagnostic(result)
             sheets_success = True
-        except Exception as e:
-            print(f"[SHEETS ERROR] {e}")
 
+            print(f"[SHEETS] ✅ GUARDADO EXITOSO")
+            print(f"  Score: {score.score_final} | Tier: {score.tier.value}")
+            print(f"{'='*70}\n")
+
+        except Exception as e:
+            print(f"\n{'='*70}")
+            print(f"[SHEETS] ❌ ERROR CRÍTICO AL GUARDAR")
+            print(f"  Empresa: {prospect_info.nombre_empresa}")
+            print(f"  Error: {str(e)}")
+            print(f"{'='*70}")
+            print(f"[SHEETS] Stack trace completo:")
+            traceback.print_exc()
+            print(f"{'='*70}\n")
+            # NO re-lanzar para que el diagnóstico continúe
+
+        # ===== GENERACIÓN PDF (CON LOGS DETALLADOS) =====
         pdf_success = False
         pdf_path = None
         try:
+            print(f"[PDF] Generando reporte PDF...")
             pdf_gen = PDFGenerator()
             pdf_path = pdf_gen.generate_prospect_pdf(result)
             pdf_success = True
+            print(f"[PDF] ✅ Generado exitosamente: {pdf_path}")
         except Exception as e:
-            print(f"[PDF ERROR] {e}")
+            print(f"[PDF] ❌ ERROR: {str(e)}")
+            traceback.print_exc()
 
+        # ===== EMAIL (TEMPORALMENTE DESHABILITADO) =====
         email_success = False
         try:
             # email_sender = EmailSender()
             # email_sender.send_confirmation_email(result, pdf_path)
             # email_success = True
-            print(f"[EMAIL] ⚠️ Deshabilitado temporalmente")
+            print(f"[EMAIL] ⚠️ Deshabilitado temporalmente (pendiente credenciales)")
         except Exception as e:
-            print(f"[EMAIL ERROR] {e}")
+            print(f"[EMAIL] ❌ ERROR: {str(e)}")
 
+        # ===== RESPUESTA AL FRONTEND =====
         return DiagnosticResponse(
             success=sheets_success,
             diagnostic_id=result.diagnostic_id,
             tier=score.tier.value,
             score_total=score.score_final,
+            score_datos=score.madurez_digital.decisiones_basadas_datos,
+            score_talento=score.madurez_digital.procesos_estandarizados,
+            score_procesos=score.madurez_digital.sistemas_integrados,
+            score_infraestructura=score.madurez_digital.eficiencia_operativa,
             arquetipo=arquetipo.nombre,
             servicio_sugerido=servicio,
             monto_min=monto_min,
@@ -266,7 +314,12 @@ async def process_diagnostic(request: DiagnosticRequest):
         )
 
     except Exception as e:
-        print(f"[ERROR] {e}")
+        print(f"\n{'='*70}")
+        print(f"[DIAGNOSTIC] ❌ ERROR CRÍTICO EN PROCESAMIENTO")
+        print(f"  Error: {str(e)}")
+        print(f"{'='*70}")
+        traceback.print_exc()
+        print(f"{'='*70}\n")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/diagnostic/{diagnostic_id}/pdf")
