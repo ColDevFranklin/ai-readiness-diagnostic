@@ -1,6 +1,6 @@
 """
-Sistema de envío de emails - Version 3.0 RESEND
-FIXED: Migrado de SMTP a Resend API
+Sistema de envío de emails - Version 3.2 RESEND
+FIXED: Logs detallados + Mejor manejo de errores + Nueva API Key
 """
 
 import resend
@@ -39,7 +39,22 @@ class EmailSender:
         self.from_email = email_config.get("from", "onboarding@resend.dev")
         self.sender_name = "Andrés - AI Consulting"
 
-        print(f"[EMAIL INIT] Resend configurado | From: {self.from_email}")
+        # Testing mode
+        self.testing_mode = secrets.get("EMAIL_TESTING_MODE") == "true"
+        self.testing_recipient = secrets.get("EMAIL_TESTING_RECIPIENT", "franklinnrodriguez83@gmail.com")
+
+        print(f"\n{'='*70}")
+        print(f"[EMAIL INIT] Inicializando EmailSender...")
+        print(f"{'='*70}")
+        print(f"  API Key encontrada: {bool(self.api_key)}")
+        print(f"  API Key (primeros 10 chars): {self.api_key[:10] if self.api_key else 'NONE'}...")
+        print(f"  From email: {self.from_email}")
+        print(f"  Sender name: {self.sender_name}")
+        print(f"  Testing mode: {self.testing_mode}")
+        if self.testing_mode:
+            print(f"  ⚠️ MODO TESTING ACTIVADO")
+            print(f"  Todos los emails irán a: {self.testing_recipient}")
+        print(f"{'='*70}\n")
 
     def send_confirmation_email(
         self,
@@ -49,7 +64,19 @@ class EmailSender:
         """Enviar email de confirmación según Tier"""
 
         try:
-            print(f"[EMAIL START] Enviando a {result.prospect_info.contacto_email} | Tier: {result.score.tier.value}")
+            # Determinar destinatario real
+            recipient_email = self.testing_recipient if self.testing_mode else result.prospect_info.contacto_email
+
+            print(f"\n{'='*70}")
+            print(f"[EMAIL START] Preparando envío de email...")
+            print(f"{'='*70}")
+            print(f"  Cliente: {result.prospect_info.nombre_empresa}")
+            print(f"  Email destino (real): {result.prospect_info.contacto_email}")
+            if self.testing_mode:
+                print(f"  ⚠️ MODO TESTING: Redirigiendo a {self.testing_recipient}")
+            print(f"  Tier: {result.score.tier.value}")
+            print(f"  Score: {result.score.score_final}/100")
+            print(f"{'='*70}\n")
 
             # Obtener contenido según Tier
             if result.score.tier.value == "A":
@@ -59,13 +86,30 @@ class EmailSender:
             else:
                 subject, html_body = self._get_tier_c_content(result)
 
+            # Agregar banner de testing si está en modo testing
+            if self.testing_mode:
+                html_body = f"""
+                <div style="background: #fff3cd; padding: 15px; margin-bottom: 20px; border-left: 4px solid #ffc107; border-radius: 4px;">
+                    <strong style="color: #856404;">⚠️ MODO TESTING - EMAIL DE PRUEBA</strong><br/>
+                    <span style="color: #856404;">Este email estaba destinado a: <strong>{result.prospect_info.contacto_email}</strong></span><br/>
+                    <span style="color: #856404;">Empresa: <strong>{result.prospect_info.nombre_empresa}</strong></span><br/>
+                    <span style="color: #856404;">Sector: <strong>{result.prospect_info.sector}</strong></span>
+                </div>
+                {html_body}
+                """
+
             # Preparar parámetros del email
             email_params = {
                 "from": f"{self.sender_name} <{self.from_email}>",
-                "to": [result.prospect_info.contacto_email],
-                "subject": subject,
+                "to": [recipient_email],
+                "subject": f"[TEST] {subject}" if self.testing_mode else subject,
                 "html": html_body,
             }
+
+            print(f"[EMAIL] Parámetros preparados:")
+            print(f"  From: {email_params['from']}")
+            print(f"  To: {email_params['to']}")
+            print(f"  Subject: {email_params['subject'][:50]}...")
 
             # Adjuntar PDF si existe
             if pdf_path and pdf_path.exists():
@@ -77,18 +121,63 @@ class EmailSender:
                     "content": list(pdf_content)  # Resend requiere lista de bytes
                 }]
                 print(f"[EMAIL PDF] Adjuntando PDF: {pdf_path}")
+            else:
+                print(f"[EMAIL PDF] No se adjuntará PDF (no existe o no se proporcionó)")
 
             # Enviar con Resend
+            print(f"\n[EMAIL] Llamando a Resend API...")
+            print(f"  API Key configurada: {bool(resend.api_key)}")
+            print(f"  API Key (primeros 10): {resend.api_key[:10]}...")
+
             response = resend.Emails.send(email_params)
 
-            print(f"[EMAIL SUCCESS] Enviado a {result.prospect_info.contacto_email} | ID: {response.get('id', 'N/A')}")
+            print(f"\n{'='*70}")
+            print(f"[EMAIL SUCCESS] ✅ EMAIL ENVIADO EXITOSAMENTE")
+            print(f"{'='*70}")
+            print(f"  Destinatario: {recipient_email}")
+            print(f"  Response ID: {response.get('id', 'N/A')}")
+            print(f"  Response completo: {response}")
+
+            if self.testing_mode:
+                print(f"\n  ⚠️ MODO TESTING ACTIVO")
+                print(f"  Revisa la bandeja de: {self.testing_recipient}")
+                print(f"  También revisa SPAM/PROMOCIONES")
+
+            print(f"{'='*70}\n")
+
             return True
 
         except Exception as e:
-            print(f"[EMAIL ERROR] {datetime.now()}: {e}")
-            print(f"  Destinatario: {result.prospect_info.contacto_email}")
+            print(f"\n{'='*70}")
+            print(f"[EMAIL ERROR] ❌ ERROR CRÍTICO AL ENVIAR EMAIL")
+            print(f"{'='*70}")
+            print(f"  Timestamp: {datetime.now()}")
+            print(f"  Empresa: {result.prospect_info.nombre_empresa}")
+            print(f"  Email destino: {result.prospect_info.contacto_email}")
             print(f"  Tier: {result.score.tier.value}")
+            print(f"  Testing mode: {self.testing_mode}")
+            print(f"  API Key presente: {bool(self.api_key)}")
+            print(f"  API Key (primeros 10): {self.api_key[:10] if self.api_key else 'NONE'}...")
+            print(f"  Error type: {type(e).__name__}")
+            print(f"  Error message: {str(e)}")
+            print(f"{'='*70}")
+            print(f"[EMAIL ERROR] Stack trace completo:")
             print(traceback.format_exc())
+            print(f"{'='*70}\n")
+
+            # Mensajes de ayuda específicos según el error
+            error_str = str(e).lower()
+            if "api" in error_str or "key" in error_str or "unauthorized" in error_str or "401" in error_str:
+                print(f"[EMAIL HELP] 💡 POSIBLE CAUSA: API Key inválida o expirada")
+                print(f"  Solución: Genera una nueva API Key en https://resend.com/api-keys")
+                print(f"  Actualiza RESEND_API_KEY en tu archivo .env")
+            elif "rate" in error_str or "limit" in error_str or "429" in error_str:
+                print(f"[EMAIL HELP] 💡 POSIBLE CAUSA: Límite de envíos excedido")
+                print(f"  Solución: Espera o actualiza tu plan en Resend")
+            elif "domain" in error_str or "verify" in error_str:
+                print(f"[EMAIL HELP] 💡 POSIBLE CAUSA: Dominio no verificado")
+                print(f"  Solución: Usa onboarding@resend.dev o verifica tu dominio")
+
             return False
 
     def _get_tier_a_content(self, result: DiagnosticResult) -> tuple:

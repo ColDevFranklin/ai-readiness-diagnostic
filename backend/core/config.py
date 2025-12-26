@@ -1,8 +1,7 @@
-
 """
 Adaptador de Secrets para FastAPI
 Permite usar st.secrets (Streamlit) con variables de entorno (.env)
-Version 3.0 - Soporte para Resend
+Version 3.1 - Soporte para Resend + Testing Mode
 """
 import os
 import json
@@ -56,7 +55,7 @@ class SecretsAdapter:
             self._secrets['spreadsheet_id'] = os.getenv('SPREADSHEET_ID', '')
             self._secrets['sheet_name'] = os.getenv('SHEET_NAME', 'AI_Readiness_Diagnostics')
 
-            # EMAIL CONFIGURATION - Resend (NUEVO)
+            # EMAIL CONFIGURATION - Resend
             self._secrets['email'] = {
                 'resend_api_key': os.getenv('RESEND_API_KEY'),
                 'from': os.getenv('EMAIL_FROM', 'onboarding@resend.dev')
@@ -64,6 +63,12 @@ class SecretsAdapter:
 
             # Fallback: también soportar key en root level
             self._secrets['resend_api_key'] = os.getenv('RESEND_API_KEY')
+
+            # ==========================================
+            # TESTING MODE (AGREGADO - FIX CRÍTICO)
+            # ==========================================
+            self._secrets['EMAIL_TESTING_MODE'] = os.getenv('EMAIL_TESTING_MODE', 'false')
+            self._secrets['EMAIL_TESTING_RECIPIENT'] = os.getenv('EMAIL_TESTING_RECIPIENT', 'franklinnrodriguez83@gmail.com')
 
             # SMTP Configuration (LEGACY - Mantener por compatibilidad)
             self._secrets['smtp'] = {
@@ -74,8 +79,13 @@ class SecretsAdapter:
                 'from': os.getenv('EMAIL_FROM', os.getenv('SMTP_USER', ''))
             }
 
+            # Logs de configuración
             if self._secrets['email']['resend_api_key']:
                 print(f"[SECRETS] ✓ Resend configurado | From: {self._secrets['email']['from']}")
+                testing_mode = self._secrets['EMAIL_TESTING_MODE']
+                print(f"[SECRETS] ✓ Testing Mode: {testing_mode}")
+                if testing_mode == 'true':
+                    print(f"[SECRETS] ✓ Testing Recipient: {self._secrets['EMAIL_TESTING_RECIPIENT']}")
             else:
                 print("[SECRETS] ⚠ RESEND_API_KEY no encontrado - emails NO funcionarán")
 
@@ -142,3 +152,5 @@ if __name__ == '__main__':
     print(f"Resend API Key configurada: {'✓' if secrets.get('resend_api_key') else '✗'}")
     print(f"Email From: {secrets.get('email', {}).get('from', 'N/A')}")
     print(f"Spreadsheet ID: {secrets.get('spreadsheet_id', 'N/A')}")
+    print(f"Testing Mode: {secrets.get('EMAIL_TESTING_MODE', 'N/A')}")
+    print(f"Testing Recipient: {secrets.get('EMAIL_TESTING_RECIPIENT', 'N/A')}")

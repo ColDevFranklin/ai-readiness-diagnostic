@@ -287,12 +287,20 @@ async def process_diagnostic(request: DiagnosticRequest):
         # ===== EMAIL (TEMPORALMENTE DESHABILITADO) =====
         email_success = False
         try:
-            # email_sender = EmailSender()
-            # email_sender.send_confirmation_email(result, pdf_path)
-            # email_success = True
-            print(f"[EMAIL] ⚠️ Deshabilitado temporalmente (pendiente credenciales)")
+            print(f"[EMAIL] Iniciando envío con Resend...")
+            email_sender = EmailSender()
+            email_success = email_sender.send_confirmation_email(result, pdf_path)
+
+            if email_success:
+                print(f"[EMAIL] ✅ Email enviado exitosamente a {result.prospect_info.contacto_email}")
+            else:
+                print(f"[EMAIL] ⚠️ Email no se pudo enviar (ver detalles arriba)")
+
         except Exception as e:
-            print(f"[EMAIL] ❌ ERROR: {str(e)}")
+            print(f"[EMAIL] ❌ ERROR CRÍTICO: {str(e)}")
+            import traceback
+            traceback.print_exc()
+
 
         # ===== RESPUESTA AL FRONTEND =====
         return DiagnosticResponse(
